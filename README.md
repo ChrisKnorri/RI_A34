@@ -1,10 +1,25 @@
-# FC Portugal Codebase <br> for RoboCup 3D Soccer Simulation League
+# Intelligent Robotics 24/25 - Assignment 3/4 - Group 14h E
 
-![](https://s5.gifyu.com/images/Siov6.gif)
+## Group members
 
-## About
+- Christopher Schneider - <up202401397@fe.up.pt>
+- Toni Grgurevic - <up202408625@up.pt>
+- Juan Camilo Pacheco - <up202402591@fe.up.pt>
 
-The FC Portugal Codebase was mainly written in Python, with some C++ modules. It was created to simplify and speed up the development of a team for participating in the RoboCup 3D Soccer Simulation League. We hope this release helps existing teams transition to Python more easily, and provides new teams with a robust and modern foundation upon which they can build new features.
+
+## Requirements
+
+- Ros2 Humble 
+- Flatland
+
+## Setup and run
+
+1. `git clone https://github.com/ChrisKnorri/RI_A34`
+2. `cd RI_A34`
+3. `./setup.sh`
+4. A second terminal should pop up after 5 seconds with the Utils. If you want to shutdown, Ctrl+C in the Util's Tab first, then in the original terminal.
+
+# Original Stuff to be altered:
 
 
 ## Documentation
