@@ -9,8 +9,8 @@
 
 ## Requirements
 
-- Ros2 Humble 
-- Flatland
+- rcssserver3d
+- SimSpark
 
 ## Setup and run
 
