@@ -17,8 +17,8 @@ echo "Started rcssserver3d with PID $!"
 sh RoboViz/bin/roboviz.sh &
 echo "Started roboviz.sh with PID $!"
 
-# Wait 5 seconds for initialization
-sleep 5
+# Wait 10 seconds for initialization
+sleep 10
 
 # Start the third command with additional setup
 if command -v gnome-terminal &> /dev/null; then
