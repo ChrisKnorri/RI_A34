@@ -23,15 +23,15 @@ sleep 10
 # Start the third command with additional setup
 if command -v gnome-terminal &> /dev/null; then
     # If gnome-terminal is available
-    gnome-terminal --tab -- bash -c "unset PYTHONPATH && python3 Run_Utils.py; exec bash" &
+    gnome-terminal --tab -- bash -c "unset PYTHONPATH && ./start_penalty.sh; exec bash" &
     echo "Started Run_Utils.py in a new gnome-terminal tab with setup commands, PID $!"
 elif command -v xterm &> /dev/null; then
     # If xterm is available
-    xterm -hold -e "unset PYTHONPATH && python3 Run_Utils.py" &
+    xterm -hold -e "unset PYTHONPATH && ./start_penalty.sh" &
     echo "Started Run_Utils.py in a new xterm window with setup commands, PID $!"
 else
     # If no GUI terminal is available, run in the background
-    (unset PYTHONPATH && python3 Run_Utils.py) &
+    (unset PYTHONPATH && ./start_penalty.sh) &
     echo "Started Run_Utils.py in the background with setup commands, PID $!"
 fi
 
