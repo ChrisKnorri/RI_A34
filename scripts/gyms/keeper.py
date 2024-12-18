@@ -6,13 +6,7 @@ from scripts.commons.Server import Server
 from scripts.commons.Train_Base import Train_Base
 from time import sleep
 import os, gym
-import math
 import numpy as np
-import gym
-from gym import spaces
-import numpy as np
-from stable_baselines3 import PPO
-from stable_baselines3.common.env_util import make_vec_env
 
 '''
 Objective:
@@ -22,7 +16,13 @@ Learn how to fall (simplest example)
 - class Train:  implements algorithms to train a new model or test an existing model
 '''
 
-MAX_STEP = 500  # 5 seconds
+import gym
+from gym import spaces
+import numpy as np
+from stable_baselines3 import PPO
+from stable_baselines3.common.env_util import make_vec_env
+
+MAX_STEP = 400  # 4 seconds
 
 action_dict = {
     0: "",
@@ -32,16 +32,6 @@ action_dict = {
     4: "Get_Up",
 
 }
-
-
-def predict_ball_y_at_x(ball_pos_x, ball_pos_y, ball_vel_x, ball_vel_y, target_x):
-    # Calculate the time it takes for the ball to reach x = -15
-    time_to_target_x = (target_x - ball_pos_x) / ball_vel_x
-
-    # Calculate the predicted y position at that time
-    predicted_pos_y = ball_pos_y + ball_vel_y * time_to_target_x
-
-    return predicted_pos_y
 
 
 class GoalkeeperEnv(gym.Env):
@@ -58,37 +48,62 @@ class GoalkeeperEnv(gym.Env):
         self.action_space = spaces.Discrete(5)
         self.goalkeeper_status = 1
 
+
+
         # Define observation space (state variables) Example: [ball_x, ball_y, velocity_x, velocity_y, ball_direction ?
         # , goalkeeper_x, goalkeeper_y goalkeeper_status]
-        # todo - make parameters domains work
+        # todo - make parameters work
 
         self.observation_space = spaces.Box(
-            low=np.array([-20, -20, -10, -10, -20, -20, -20, 0]),  # Min values
-            high=np.array([20, 20, 10, 10, 20, 20, 20, 1]),  # Max values
+            low=np.array([-50, 0, -30, 10, 0, -50, -30, 0]),  # Min values
+            high=np.array([50, 30, 30, 50, 2, 50, 30, 1]),  # Max values
             dtype=np.float32
         )
         self.obs = np.zeros(8, np.float32)
+        self.state = None  # Initialize state
         assert np.any(self.player.world.robot.cheat_abs_pos), "Cheats are not enabled! Run_Utils.py -> Server -> Cheats"
         self.reset()
 
-    def observe(self):
+    def reset(self):
+        '''
+        Reset and stabilize the robot
+        '''
 
         r = self.player.world.robot
         world = self.player.world
+        # Randomize initial state
+        ball_x = np.random.uniform(-50, 50)
+        ball_y = np.random.uniform(0, 30)
+        velocity_x = np.random.uniform(-30, 30)
+        velocity_y = np.random.uniform(10, 50)
+        goalkeeper_status = 1
 
-        ball_vel_x, ball_vel_y = world.get_ball_abs_vel(10)[:2]
-        ball_pos_x, ball_pos_y = world.ball_abs_pos[:2]  # is it up to date ?
-        keeper_pos_x, keeper_pos_y = r.loc_head_position[:2]  # is it up to date ?
+        # to change to real position
+        goalkeeper_x = 0
+        goalkeeper_y = -14
 
-        target_x = -15
-        predicted_pos_y = predict_ball_y_at_x(ball_pos_x, ball_pos_y, ball_vel_x, ball_vel_y, target_x)
+        self.step_counter = 0
+        self.goalkeeper_status = 1
 
-        # [ball_x, ball_y, velocity_x, velocity_y, ball_direction
-        # , goalkeeper_x, goalkeeper_y goalkeeper_status]
-        self.obs = [ball_pos_x, ball_pos_y, ball_vel_x, ball_vel_y, predicted_pos_y, keeper_pos_x, keeper_pos_y,
-                    self.goalkeeper_status]
 
-        return self.obs
+        for _ in range(25):
+            self.player.scom.unofficial_beam((goalkeeper_x, goalkeeper_y, 0.50),
+                                             0)  # beam player continuously (floating above ground)
+            self.player.behavior.execute("Zero")
+            self.sync()
+
+        # beam player to ground
+        self.player.scom.unofficial_beam((goalkeeper_x, goalkeeper_y, r.beam_height), 0)
+        r.joints_target_speed[
+            0] = 0.01  # move head to trigger physics update (rcssserver3d bug when no joint is moving)
+        self.sync()
+
+        # stabilize on ground
+        for _ in range(7):
+            self.player.behavior.execute("Zero")
+            self.sync()
+
+        return self.observe()
 
     def sync(self):
         """ Run a single simulation step """
@@ -103,33 +118,34 @@ class GoalkeeperEnv(gym.Env):
         Draw.clear_all()
         self.player.terminate()
 
-        # todo reset and create episode (inicialization)
+    def predict_ball_y_at_x(self, ball_pos_x, ball_pos_y, ball_vel_x, ball_vel_y, target_x):
+        # Calculate the time it takes for the ball to reach x = -15
+        time_to_target_x = (target_x - ball_pos_x) / ball_vel_x
 
-    def reset(self):
-        '''
-        Reset and stabilize the robot
-        Note: for some behaviors it would be better to reduce stabilization or add noise
-        '''
+        # Calculate the predicted y position at that time
+        predicted_pos_y = ball_pos_y + ball_vel_y * time_to_target_x
 
-        self.step_counter = 0
+        return predicted_pos_y
+
+    def observe(self):
+
         r = self.player.world.robot
+        world = self.player.world
 
-        for _ in range(25):
-            self.player.scom.unofficial_beam((-3, 0, 0.50), 0)  # beam player continuously (floating above ground)
-            self.player.behavior.execute("Zero")
-            self.sync()
+        ball_vel_x, ball_vel_y = world.get_ball_abs_vel(10)[:2]
+        ball_pos_x, ball_pos_y = world.ball_abs_pos[:2]  #is it up to date ?
+        keeper_pos_x, keeper_pos_y = r.loc_head_position[:2] #is it up to date ?
 
-        # beam player to ground
-        self.player.scom.unofficial_beam((-3, 0, r.beam_height), 0)
-        r.joints_target_speed[
-            0] = 0.01  # move head to trigger physics update (rcssserver3d bug when no joint is moving)
-        self.sync()
+        target_x = -15
+        predicted_pos_y = self.predict_ball_y_at_x(ball_pos_x, ball_pos_y, ball_vel_x, ball_vel_y, target_x)
 
-        # stabilize on ground
-        for _ in range(7):
-            self.player.behavior.execute("Zero")
-            self.sync()
-        return self.observe()
+        #[ball_x, ball_y, velocity_x, velocity_y, ball_direction
+        # , goalkeeper_x, goalkeeper_y goalkeeper_status]
+        self.obs = [ball_pos_x,ball_pos_y,ball_vel_x,ball_vel_y, predicted_pos_y,keeper_pos_x,keeper_pos_y,self.goalkeeper_status]
+
+        return self.obs
+
+
 
     def step(self, action):
         r = self.player.world.robot
@@ -166,7 +182,9 @@ class GoalkeeperEnv(gym.Env):
         # Check if episode is done
         done = self.is_goal() or self.is_save() or self.is_miss() or self.step_counter > MAX_STEP
 
-        return self.obs, reward, done, {}
+        # Update state
+        self.state = self.obs
+        return self.state, reward, done, {}
 
     def is_goal(self):
         if self.get_bal_pos()[0] < -15 and abs(self.get_bal_pos()[1]) < 1:
@@ -206,7 +224,7 @@ class Train(Train_Base):
         total_steps = 50000  # (*RV: >=10M)
         learning_rate = 30e-4  # (*RV: 3e-4)
         # *RV -> Recommended value for more complex environments
-        folder_name = f'Fall_R{self.robot_type}'
+        folder_name = f'Keeper_R{self.robot_type}'
         model_path = f'./scripts/gyms/logs/{folder_name}/'
 
         print("Model path:", model_path)
@@ -214,8 +232,8 @@ class Train(Train_Base):
         # --------------------------------------- Run algorithm
         def init_env(i_env):
             def thunk():
-                return GoalkeeperEnv(self.ip, self.server_p + i_env, self.monitor_p_1000 + i_env,
-                                     self.robot_type, False)
+                return GoalkeeperEnv(self.ip, self.server_p + i_env, self.monitor_p_1000 + i_env, self.robot_type,
+                                     False)
 
             return thunk
 
@@ -249,7 +267,7 @@ class Train(Train_Base):
 
         # Uses different server and monitor ports
         server = Server(self.server_p - 1, self.monitor_p, 1)
-        env = Fall(self.ip, self.server_p - 1, self.monitor_p, self.robot_type, True)
+        env = GoalkeeperEnv(self.ip, self.server_p - 1, self.monitor_p, self.robot_type, True)
         model = PPO.load(args["model_file"], env=env)
 
         try:
@@ -262,66 +280,6 @@ class Train(Train_Base):
         env.close()
         server.kill()
 
-
-# Functions to be implemented in learning loop
-
-def spawn_ball():
-    # Define the constants for the problem
-    intersection_point = (-16, 0, 0.042)  # Center of the circular area
-    furthest_point_left = (-6, 10, 0.042)
-    furthest_point_right = (-6, -10, 0.042)
-    closest_point_left = (-10, 6, 0.042)
-    closest_point_right = (-10, -6, 0.042)
-
-    # Calculate the radii of the circles
-    furthest_radius = math.sqrt((furthest_point_left[0] - intersection_point[0])**2 + 
-                                (furthest_point_left[1] - intersection_point[1])**2)
-    closest_radius = math.sqrt((closest_point_left[0] - intersection_point[0])**2 + 
-                               (closest_point_left[1] - intersection_point[1])**2)
-
-    # Calculate the angles of the bounding lines in radians
-    angle_left = math.atan2(furthest_point_left[1] - intersection_point[1],
-                            furthest_point_left[0] - intersection_point[0])
-    angle_right = math.atan2(furthest_point_right[1] - intersection_point[1],
-                             furthest_point_right[0] - intersection_point[0])
-
-    # Ensure the angles are ordered correctly (left should be greater than right)
-    if angle_left < angle_right:
-        angle_left, angle_right = angle_right, angle_left
-
-    # Generate a random radius and angle within the specified range
-    radius = random.uniform(closest_radius, furthest_radius)
-    angle = random.uniform(angle_right, angle_left)
-
-    # Convert polar coordinates back to Cartesian coordinates
-    x = intersection_point[0] + radius * math.cos(angle)
-    y = intersection_point[1] + radius * math.sin(angle)
-
-    # # Calculate the rotation to face towards a random point on the goal line
-    # rotation = calculate_orientation_towards_goal((x, y, 0))
-
-    return (x, y)
-
-def calculate_orientation_towards_goal(point):
-    # Define the goal line
-    goal_line_x = -15
-    goal_line_y_min = -1
-    goal_line_y_max = 1
-
-    # Generate a random y-coordinate on the goal line
-    random_goal_y = random.uniform(goal_line_y_min, goal_line_y_max)
-    random_goal_point = (goal_line_x, random_goal_y)
-
-    # Calculate the angle to the random point on the goal line
-    dx = random_goal_point[0] - point[0]
-    dy = random_goal_point[1] - point[1]
-    angle_to_goal = math.degrees(math.atan2(dy, dx))
-
-    # Ensure the angle is within [0, 360]
-    if angle_to_goal < 0:
-        angle_to_goal += 360
-
-    return angle_to_goal
 
 '''
 The learning process takes about 5 minutes.

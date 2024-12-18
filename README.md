@@ -4,8 +4,6 @@
 
 - Christopher Schneider - <up202401397@fe.up.pt>
 - Toni Grgurevic - <up202408625@up.pt>
-- Juan Camilo Pacheco - <up202402591@fe.up.pt>
-
 
 ## Requirements
 
