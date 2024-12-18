@@ -10,6 +10,8 @@ Objective:
 ----------
 Demonstrate Goalkeeper Training
 '''
+
+
 def calculate_orientation_towards_goal(point):
     # Define the goal line
     goal_line_x = -15
@@ -31,6 +33,7 @@ def calculate_orientation_towards_goal(point):
 
     return angle_to_goal
 
+
 def random_longshot():
     # Define the constants for the problem
     intersection_point = (-16, 0, 0)  # Center of the circular area
@@ -40,10 +43,10 @@ def random_longshot():
     closest_point_right = (-10, -6, 0)
 
     # Calculate the radii of the circles
-    furthest_radius = math.sqrt((furthest_point_left[0] - intersection_point[0])**2 + 
-                                (furthest_point_left[1] - intersection_point[1])**2)
-    closest_radius = math.sqrt((closest_point_left[0] - intersection_point[0])**2 + 
-                               (closest_point_left[1] - intersection_point[1])**2)
+    furthest_radius = math.sqrt((furthest_point_left[0] - intersection_point[0]) ** 2 +
+                                (furthest_point_left[1] - intersection_point[1]) ** 2)
+    closest_radius = math.sqrt((closest_point_left[0] - intersection_point[0]) ** 2 +
+                               (closest_point_left[1] - intersection_point[1]) ** 2)
 
     # Calculate the angles of the bounding lines in radians
     angle_left = math.atan2(furthest_point_left[1] - intersection_point[1],
@@ -65,8 +68,30 @@ def random_longshot():
 
     # Calculate the rotation to face towards a random point on the goal line
     # rotation = calculate_orientation_towards_goal((x, y, 0))
-    
-    return x, y # , rotation
+
+    return x, y  # , rotation
+def predict_ball_y_at_x(ball_pos_x, ball_pos_y, ball_vel_x, ball_vel_y, target_x):
+    # Calculate the time it takes for the ball to reach the target x position
+    time_to_target_x = (target_x - ball_pos_x) / ball_vel_x
+
+    # Calculate the predicted y position at that time
+    predicted_pos_y = ball_pos_y + ball_vel_y * time_to_target_x
+
+    return predicted_pos_y
+
+
+def decide_goalkeeper_action(ball_pos_x, ball_pos_y, ball_vel_x, ball_vel_y):
+    target_x = -14  # Goalkeeper's x position
+    predicted_pos_y = predict_ball_y_at_x(ball_pos_x, ball_pos_y, ball_vel_x, ball_vel_y, target_x)
+    print("y expected ->" + str(predicted_pos_y))
+    if abs(predicted_pos_y) <= 0.05 or abs(predicted_pos_y) > 3:
+        return ""
+    elif predicted_pos_y < -0.2:
+        return "Dive_Right"
+    elif predicted_pos_y > 0.2:
+        return "Dive_Left"
+    else:
+        return "Fall_Front"
 
 class Goalie():
     def __init__(self, script: Script) -> None:
@@ -74,12 +99,15 @@ class Goalie():
 
     def execute(self):
 
-        a = self.script.args          
-        player = Agent(a.i, a.p, a.m, a.u, a.r, a.t)  # Args: Server IP, Agent Port, Monitor Port, Uniform No., Robot Type, Team Name
-        player.path_manager.draw_options(enable_obstacles=True, enable_path=True)  # Enable drawings of obstacles and path to ball
+        a = self.script.args
+        player = Agent(a.i, a.p, a.m, a.u, a.r,
+                       a.t)  # Args: Server IP, Agent Port, Monitor Port, Uniform No., Robot Type, Team Name
+        player.path_manager.draw_options(enable_obstacles=True,
+                                         enable_path=True)  # Enable drawings of obstacles and path to ball
         behavior = player.behavior
         w = player.world
         r = w.robot
+        print(behavior.get_all_behaviors())
 
         print("\nThe simulation will shoot balls towards the goal randomly")
         print("Observe the ball's trajectory and goalkeeper's actions")
@@ -104,7 +132,7 @@ class Goalie():
             ball_velocity = (
                 math.cos(math.radians(orientation)) * random.uniform(10, 18),  # Increased velocity range
                 math.sin(math.radians(orientation)) * random.uniform(10, 18),
-                random.uniform(0.5, 8)  # Slight elevation
+                random.uniform(0.3, 4)  # Slight elevation
             )
 
             # Spawn the ball
@@ -122,10 +150,22 @@ class Goalie():
             stuck_counter = 0  # Count consecutive iterations with zero displacement
             stuck_limit = 30  # Maximum allowed iterations with no displacement before reset
 
+            iterations = 0
+            in_motion = False
             while True:
                 # Update ball position and game time
                 b = w.ball_abs_pos  # Ball absolute position (x, y, z)
                 game_time = w.time_game  # Get current game time
+                iterations += 1
+
+                speed = w.get_ball_abs_vel(1)  # Ball absolute speed (x, y, z)
+
+                if iterations == 20:
+                    action = decide_goalkeeper_action(b[0], b[1], speed[0], speed[1])
+                    if action != "" and not in_motion:
+                        print(f"Goalkeeper should: {action}")
+                        behavior.execute_to_completion(action)
+                        #in_motion = not behavior.execute(action)
 
                 # # Debug position and game time
                 # print(f"Ball position: {b}, Game time: {game_time}")
@@ -166,5 +206,14 @@ class Goalie():
                         break
 
                 # Update world state
-                player.scom.commit_and_send(r.get_command()) 
+                player.scom.commit_and_send(r.get_command())
                 player.scom.receive()
+
+                if behavior.is_ready("Get_Up"):
+                    #player.scom.unofficial_beam((*r.loc_head_position[0:2], r.beam_height), 0)
+                    #behavior.execute_to_completion("Zero_Bent_Knees")
+                    print("getting up")
+                    behavior.execute_to_completion("Get_Up")
+
+
+
