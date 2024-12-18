@@ -153,7 +153,7 @@ class Goalie():
                 # Compute total displacement over the time window
                 if len(position_history) == history_limit:
                     total_displacement = np.linalg.norm(np.array(position_history[-1]) - np.array(position_history[0]))
-                    print(f"Ball total displacement over last {history_limit} steps: {total_displacement}")
+                    # print(f"Ball total displacement over last {history_limit} steps: {total_displacement}")
 
                     if total_displacement < movement_threshold:
                         stuck_counter += 1
