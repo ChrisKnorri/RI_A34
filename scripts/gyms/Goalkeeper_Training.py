@@ -6,7 +6,9 @@ from scripts.commons.Server import Server
 from scripts.commons.Train_Base import Train_Base
 from time import sleep
 import os, gym
+import math
 import numpy as np
+import random
 
 '''
 Objective:
@@ -16,7 +18,7 @@ Learn how to fall (simplest example)
 - class Train:  implements algorithms to train a new model or test an existing model
 '''
 
-class Fall(gym.Env):
+class Save(gym.Env):
     def __init__(self, ip, server_p, monitor_p, r_type, enable_draw) -> None:
 
         self.robot_type = r_type
@@ -29,7 +31,7 @@ class Fall(gym.Env):
         self.no_of_joints = self.player.world.robot.no_of_joints
         self.obs = np.zeros(self.no_of_joints + 1, np.float32) # joints + torso height
         self.observation_space = gym.spaces.Box(low=np.full(len(self.obs),-np.inf,np.float32), high=np.full(len(self.obs),np.inf,np.float32), dtype=np.float32)
-
+        
         # Action space
         MAX = np.finfo(np.float32).max
         no_of_actions = self.no_of_joints
@@ -65,6 +67,8 @@ class Fall(gym.Env):
 
         self.step_counter = 0
         r = self.player.world.robot
+        b = self.player.world.ball_abs_pos # ball position
+        b[:2] = np.array(spawn_ball()) # randomize ball position
         
         for _ in range(25): 
             self.player.scom.unofficial_beam((-3,0,0.50),0) # beam player continuously (floating above ground)
@@ -136,7 +140,7 @@ class Train(Train_Base):
         #--------------------------------------- Run algorithm
         def init_env(i_env):
             def thunk():
-                return Fall( self.ip , self.server_p + i_env, self.monitor_p_1000 + i_env, self.robot_type, False )
+                return Save( self.ip , self.server_p + i_env, self.monitor_p_1000 + i_env, self.robot_type, False )
             return thunk
 
         servers = Server( self.server_p, self.monitor_p_1000, n_envs+1 ) #include 1 extra server for testing
@@ -166,7 +170,7 @@ class Train(Train_Base):
 
         # Uses different server and monitor ports
         server = Server( self.server_p-1, self.monitor_p, 1 )
-        env = Fall( self.ip, self.server_p-1, self.monitor_p, self.robot_type, True )
+        env = Save( self.ip, self.server_p-1, self.monitor_p, self.robot_type, True )
         model = PPO.load( args["model_file"], env=env )
 
         try:
@@ -178,6 +182,66 @@ class Train(Train_Base):
         env.close()
         server.kill()
 
+
+# Functions to be implemented in learning loop
+
+def spawn_ball():
+    # Define the constants for the problem
+    intersection_point = (-16, 0, 0.042)  # Center of the circular area
+    furthest_point_left = (-6, 10, 0.042)
+    furthest_point_right = (-6, -10, 0.042)
+    closest_point_left = (-10, 6, 0.042)
+    closest_point_right = (-10, -6, 0.042)
+
+    # Calculate the radii of the circles
+    furthest_radius = math.sqrt((furthest_point_left[0] - intersection_point[0])**2 + 
+                                (furthest_point_left[1] - intersection_point[1])**2)
+    closest_radius = math.sqrt((closest_point_left[0] - intersection_point[0])**2 + 
+                               (closest_point_left[1] - intersection_point[1])**2)
+
+    # Calculate the angles of the bounding lines in radians
+    angle_left = math.atan2(furthest_point_left[1] - intersection_point[1],
+                            furthest_point_left[0] - intersection_point[0])
+    angle_right = math.atan2(furthest_point_right[1] - intersection_point[1],
+                             furthest_point_right[0] - intersection_point[0])
+
+    # Ensure the angles are ordered correctly (left should be greater than right)
+    if angle_left < angle_right:
+        angle_left, angle_right = angle_right, angle_left
+
+    # Generate a random radius and angle within the specified range
+    radius = random.uniform(closest_radius, furthest_radius)
+    angle = random.uniform(angle_right, angle_left)
+
+    # Convert polar coordinates back to Cartesian coordinates
+    x = intersection_point[0] + radius * math.cos(angle)
+    y = intersection_point[1] + radius * math.sin(angle)
+
+    # # Calculate the rotation to face towards a random point on the goal line
+    # rotation = calculate_orientation_towards_goal((x, y, 0))
+
+    return (x, y)
+
+def calculate_orientation_towards_goal(point):
+    # Define the goal line
+    goal_line_x = -15
+    goal_line_y_min = -1
+    goal_line_y_max = 1
+
+    # Generate a random y-coordinate on the goal line
+    random_goal_y = random.uniform(goal_line_y_min, goal_line_y_max)
+    random_goal_point = (goal_line_x, random_goal_y)
+
+    # Calculate the angle to the random point on the goal line
+    dx = random_goal_point[0] - point[0]
+    dy = random_goal_point[1] - point[1]
+    angle_to_goal = math.degrees(math.atan2(dy, dx))
+
+    # Ensure the angle is within [0, 360]
+    if angle_to_goal < 0:
+        angle_to_goal += 360
+
+    return angle_to_goal
 
 '''
 The learning process takes about 5 minutes.
