@@ -118,7 +118,7 @@ class Goalie():
 
         # Define goal line parameters
         out_of_bounds_x = -15  # x-coordinate 
-        game_time_limit = 8.0  # Maximum game time before restarting
+        game_time_limit = 5.0  # Maximum game time before restarting
 
         while True:
             # Reset game time to 0 for each iteration
@@ -130,9 +130,9 @@ class Goalie():
             ball_position = random_longshot()  # x, y position
             orientation = calculate_orientation_towards_goal(ball_position)  # Angle toward goal
             ball_velocity = (
-                math.cos(math.radians(orientation)) * random.uniform(10, 18),  # Increased velocity range
-                math.sin(math.radians(orientation)) * random.uniform(10, 18),
-                random.uniform(0.3, 4)  # Slight elevation
+                math.cos(math.radians(orientation)) * random.uniform(14, 16),  # Increased velocity range
+                math.sin(math.radians(orientation)) * random.uniform(14, 16),
+                random.uniform(0.5, 4.5)  # Slight elevation
             )
 
             # Spawn the ball
