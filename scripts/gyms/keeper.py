@@ -225,13 +225,13 @@ class GoalkeeperEnv(gym.Env):
         return self.obs
 
     def get_bal_pos(self):
-        return self.obs[0], self.obs[1]
+        return self.obs[0], self.obs[1],self.obs[2]
 
     def get_bal_vel(self):
-        return self.obs[2], self.obs[3]
+        return self.obs[2], self.obs[3], self.obs[4]
 
     def get_keeper_pos(self):
-        return self.obs[5], self.obs[6]    
+        return self.obs[5], self.obs[6]   
     
     def is_goal(self, b, out_of_bounds_x=-15):
         if b[0] <= out_of_bounds_x and -1 <= b[1] <= 1:
@@ -287,31 +287,6 @@ class GoalkeeperEnv(gym.Env):
         self.state = self.obs
         print(f"Step: {self.step_counter-1}, Action: {action}, Reward: {reward}, Done: {done}")
         return self.state, reward, done, {}
-
-    def is_goal(self):
-        if self.get_bal_pos()[0] < -15 and abs(self.get_bal_pos()[1]) < 1:
-            return True
-        return False
-
-    def is_save(self):
-        # velocity of the ball in x direction is negative or zero
-        return self.get_bal_vel()[0] <= 0
-
-    def is_miss(self):
-        # if ball is out of feild but not in goal
-        if self.get_bal_pos()[0] < -15 and abs(self.get_bal_pos()[1]) > 1:
-            return True
-        return False
-
-    def get_bal_pos(self):
-        return self.obs[0], self.obs[1],self.obs[2]
-
-    def get_bal_vel(self):
-        return self.obs[2], self.obs[3], self.obs[4]
-
-    def get_keeper_pos(self):
-        return self.obs[5], self.obs[6]
-
 
 class Train(Train_Base):
     def __init__(self, script) -> None:
