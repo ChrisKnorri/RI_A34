@@ -292,11 +292,17 @@ class GoalkeeperEnv(gym.Env):
         return False
         
     def step(self, action):
-        
         w = self.player.world
         b = w.ball_abs_pos  # Ball absolute position (x, y, z)
         bh = w.ball_abs_pos_history
         snake_behaviour = False
+
+        # Ensure action is an integer, handling scalar or array input
+        if isinstance(action, np.ndarray):
+            action = int(action)
+        else:
+            action = int(action)
+
         if action != self.goalkeeper_status and not self.ready:
             snake_behaviour = True
 
@@ -310,17 +316,16 @@ class GoalkeeperEnv(gym.Env):
         elif action == 5:
             x_coordinate = self.get_keeper_pos()[0]
             y_coordinate = np.clip(self.predict_ball_y_at_x(int(x_coordinate))[1], -1.1, 1.1)
-            self.player.behavior.execute("Walk", (x_coordinate,y_coordinate), True, 0, True, None) # Args: target, is_target_abs, ori, is_ori_abs, distance
+            self.player.behavior.execute("Walk", (x_coordinate, y_coordinate), True, 0, True, None)  # Args: target, is_target_abs, ori, is_ori_abs, distance
 
         self.sync()  # run simulation step
         self.step_counter += 1
         self.observe()
 
         reward = 0
-        # self.obs[7] -> goalkeeper status
-        if action in [1, 2, 3,4] and self.ready == 1:
+        if action in [1, 2, 3, 4] and self.ready == 1:
             reward = 1 * 0
-        elif action in [1, 2, 3,4] and self.ready == 0 and snake_behaviour:
+        elif action in [1, 2, 3, 4] and self.ready == 0 and snake_behaviour:
             reward = -0.1
 
         if self.step_counter > 0:
@@ -341,9 +346,6 @@ class GoalkeeperEnv(gym.Env):
         b = w.ball_abs_pos  # Ball absolute position (x, y, z)
         self.iterations += 1
 
-        # # Debug position and game time
-        # print(f"Ball position: {b}, Game time: {game_time}")
-
         # Update position history
         self.position_history.append(b[:2])  # Track only x, y for movement
         if len(self.position_history) > self.history_limit:
@@ -352,8 +354,6 @@ class GoalkeeperEnv(gym.Env):
         # Compute total displacement over the time window
         if len(self.position_history) == self.history_limit and not done:
             total_displacement = np.linalg.norm(np.array(self.position_history[-1]) - np.array(self.position_history[0]))
-            # print(f"Ball total displacement over last {history_limit} steps: {total_displacement}")
-
             if total_displacement < self.movement_threshold:
                 self.stuck_counter += 1
             else:
@@ -366,8 +366,8 @@ class GoalkeeperEnv(gym.Env):
 
         # Update state
         self.state = self.obs
-        # print(f"Step: {self.step_counter - 1}, Action: {action}, Reward: {reward}, Done: {done}")
         return self.state, reward, done, {}
+
 
 class Train(Train_Base):
     def __init__(self, script) -> None:
