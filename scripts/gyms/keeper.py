@@ -28,12 +28,11 @@ MAX_STEP = 400  # 4 seconds
 
 action_dict = {
     0: "",
-    1: "Fall_Left",
-    2: "Fall_Right",
+    1: "Dive_Left",
+    2: "Dive_Right",
     3: "Fall_Front",
     4: "Get_Up",
-    5: "Walk_Left",
-    6: "Walk_Right",
+    5: "shift",
 
 }
 
@@ -144,6 +143,8 @@ class GoalkeeperEnv(gym.Env):
         # to change to real position
         goalkeeper_x = -14
         goalkeeper_y = 0
+        self.ready = 1
+        self.goalkeeper_status = 0
 
         self.step_counter = 0
         self.goalkeeper_status = 1
@@ -203,10 +204,14 @@ class GoalkeeperEnv(gym.Env):
         Draw.clear_all()
         self.player.terminate()
 
-    def predict_ball_y_at_x(self, ball_pos_x, ball_pos_y, ball_vel_x, ball_vel_y, target_x):
+    def predict_ball_y_at_x(self, target_x=-15):
+
+        ball_vel_x, ball_vel_y = self.get_bal_vel()[:2]
+        ball_pos_x, ball_pos_y = self.get_bal_pos()[:2]
         if ball_vel_x == 0:
             return ball_pos_y  # Assume the ball maintains its current y-position
         time_to_target_x = (target_x - ball_pos_x) / ball_vel_x
+
         predicted_pos_y = ball_pos_y + ball_vel_y * time_to_target_x
         return predicted_pos_y
 
@@ -221,7 +226,7 @@ class GoalkeeperEnv(gym.Env):
         keeper_pos_x, keeper_pos_y = r.loc_head_position[:2]  # is it up to date ?
 
         target_x = -15
-        predicted_pos_y = self.predict_ball_y_at_x(ball_pos_x, ball_pos_y, ball_vel_x, ball_vel_y, target_x)
+        predicted_pos_y = self.predict_ball_y_at_x(target_x)
         # [ball_x, ball_y, velocity_x, velocity_y, ball_direction
         # , goalkeeper_x, goalkeeper_y goalkeeper_status]
 
@@ -292,13 +297,17 @@ class GoalkeeperEnv(gym.Env):
         if action != self.goalkeeper_status and not self.ready:
             snake_behaviour = True
 
-        if action != 0:
+        if action != 0 and action != 5:
             behavior_name = action_dict[action]
             self.ready = self.player.behavior.execute(behavior_name)
             if self.ready:
                 self.goalkeeper_status = 0
             else:
                 self.goalkeeper_status = action
+        elif action == 5:
+            x_coordinate = self.get_keeper_pos()[0]
+            y_coordinate = np.clip(self.predict_ball_y_at_x(int(x_coordinate))[1], -1.1, 1.1)
+            self.player.behavior.execute("Walk", (x_coordinate,y_coordinate), True, 0, True, None) # Args: target, is_target_abs, ori, is_ori_abs, distance
 
         self.sync()  # run simulation step
         self.step_counter += 1
@@ -309,14 +318,14 @@ class GoalkeeperEnv(gym.Env):
         if action in [1, 2, 3,4] and self.ready == 1:
             reward = 1 * 0
         elif action in [1, 2, 3,4] and self.ready == 0 and snake_behaviour:
-            reward = -0.2
+            reward = -0.1
 
         if self.is_goal(b):
-            reward = -5  # Negative reward for conceding a goal
+            reward = -1  # Negative reward for conceding a goal
         elif self.is_save(bh):
-            reward = 10  # Positive reward for saving
+            reward = 1  # Positive reward for saving
         if self.is_miss(b) and self.ready == 1:
-            reward = 1  # Positive reward for stating ready
+            reward = 0.5  # Positive reward for stating ready
 
         # Check if episode is done
         done = self.is_goal(b) or self.is_save(bh) or self.is_miss(b) or self.step_counter > MAX_STEP
