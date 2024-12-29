@@ -320,15 +320,16 @@ class GoalkeeperEnv(gym.Env):
         elif action in [1, 2, 3,4] and self.ready == 0 and snake_behaviour:
             reward = -0.1
 
-        if self.is_goal(b):
-            reward = -1  # Negative reward for conceding a goal
-        elif self.is_save(bh):
-            reward = 1  # Positive reward for saving
-        if self.is_miss(b) and self.ready == 1:
-            reward = 0.5  # Positive reward for stating ready
+        if self.step_counter > 0:
+            if self.is_goal(b):
+                reward = -1  # Negative reward for conceding a goal
+            elif self.is_save(bh):
+                reward = 1  # Positive reward for saving
+            if self.is_miss(b) and self.ready == 1:
+                reward = 0.5  # Positive reward for stating ready
 
         # Check if episode is done
-        done = self.is_goal(b) or self.is_save(bh) or self.is_miss(b) or self.step_counter > MAX_STEP
+        done = (self.is_goal(b) or self.is_save(bh) or self.is_miss(b) or self.step_counter > MAX_STEP) and self.step_counter > 0
 
         # Update ball position and game time
         b = w.ball_abs_pos  # Ball absolute position (x, y, z)
