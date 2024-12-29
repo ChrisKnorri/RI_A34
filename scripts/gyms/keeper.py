@@ -32,10 +32,11 @@ action_dict = {
     2: "Fall_Right",
     3: "Fall_Front",
     4: "Get_Up",
- #   5: "wallk_left",
- #   6: "walk_right",
+    #   5: "wallk_left",
+    #   6: "walk_right",
 
 }
+
 
 def calculate_orientation_towards_goal(point):
     # Define the goal line
@@ -100,7 +101,6 @@ def random_longshot():
 class GoalkeeperEnv(gym.Env):
     def __init__(self, ip, server_p, monitor_p, r_type, enable_draw) -> None:
 
-
         self.robot_type = r_type
 
         # Args: Server IP, Agent Port, Monitor Port, Uniform No., Robot Type, Team Name, Enable Log, Enable Draw
@@ -113,23 +113,20 @@ class GoalkeeperEnv(gym.Env):
         self.goalkeeper_status = 0
         self.ready = 1
 
-
         """
          Define observation space (state variables) Example:            NO  
           [ball_x, ball_y, ball_z, velocity_x, velocity_y,velocity_z,  #ball_direction ?, goalkeeper_x, goalkeeper_y,
            goalkeeper_status -> current keepers behaviour, ready]
         """
         self.observation_space = spaces.Box(
-            low=np.array([-50, 0, 0,   -30,-30,-30,    -15, -10,    0, 0]),  # Min values
-            high=np.array([50, 30, 30,  30, -30,30,    10, 10,     len(action_dict), 1]),  # Max values
+            low=np.array([-50, 0, 0, -30, -30, -30, -15, -10, 0, 0]),  # Min values
+            high=np.array([50, 30, 30, 30, -30, 30, 10, 10, len(action_dict), 1]),  # Max values
             dtype=np.float32
         )
         self.obs = np.zeros(10, np.float32)
         self.state = None  # Initialize state
         assert np.any(self.player.world.robot.cheat_abs_pos), "Cheats are not enabled! Run_Utils.py -> Server -> Cheats"
         self.reset()
-
-
 
     def reset(self):
         '''
@@ -139,14 +136,12 @@ class GoalkeeperEnv(gym.Env):
         r = self.player.world.robot
         w = self.player.world
 
-
         # to change to real position
         goalkeeper_x = -14
         goalkeeper_y = 0
 
         self.step_counter = 0
         self.goalkeeper_status = 1
-
 
         for _ in range(25):
             self.player.scom.unofficial_beam((goalkeeper_x, goalkeeper_y, 0.50),
@@ -173,7 +168,7 @@ class GoalkeeperEnv(gym.Env):
             math.sin(math.radians(orientation)) * random.uniform(20, 25),
             random.uniform(5, 7)  # Slight elevation
         )
-            
+
         return self.observe()
 
     def sync(self):
@@ -196,37 +191,30 @@ class GoalkeeperEnv(gym.Env):
         predicted_pos_y = ball_pos_y + ball_vel_y * time_to_target_x
         return predicted_pos_y
 
-
     def observe(self):
 
         r = self.player.world.robot
         world = self.player.world
 
         ball_vel_x, ball_vel_y, ball_vel_z = world.get_ball_abs_vel(10)[:3]
-        ball_pos_x, ball_pos_y,ball_pos_z = world.ball_abs_pos[:3]  #is it up to date ?
-        keeper_pos_x, keeper_pos_y = r.loc_head_position[:2] #is it up to date ?
+        ball_pos_x, ball_pos_y, ball_pos_z = world.ball_abs_pos[:3]  # is it up to date ?
+        keeper_pos_x, keeper_pos_y = r.loc_head_position[:2]  # is it up to date ?
 
         target_x = -15
         predicted_pos_y = self.predict_ball_y_at_x(ball_pos_x, ball_pos_y, ball_vel_x, ball_vel_y, target_x)
-        #[ball_x, ball_y, velocity_x, velocity_y, ball_direction
+        # [ball_x, ball_y, velocity_x, velocity_y, ball_direction
         # , goalkeeper_x, goalkeeper_y goalkeeper_status]
 
-        self.obs = [ball_pos_x, ball_pos_y,ball_pos_z, ball_vel_x, ball_vel_y, predicted_pos_y,
+        self.obs = [ball_pos_x, ball_pos_y, ball_pos_z, ball_vel_x, ball_vel_y, predicted_pos_y,
                     keeper_pos_x, keeper_pos_y, self.goalkeeper_status, self.ready]
 
         # Ensure no NaNs or infinities
         self.obs = np.nan_to_num(self.obs, nan=0.0, posinf=1e6, neginf=-1e6).astype(np.float32)
         return self.obs
 
-    def get_bal_pos(self):
-        return self.obs[0], self.obs[1]
-
-    def get_bal_vel(self):
-        return self.obs[2], self.obs[3]
-
     def get_keeper_pos(self):
-        return self.obs[5], self.obs[6]    
-    
+        return self.obs[5], self.obs[6]
+
     def is_goal(self, b, out_of_bounds_x=-15):
         if b[0] <= out_of_bounds_x and -1 <= b[1] <= 1:
             return True
@@ -241,12 +229,15 @@ class GoalkeeperEnv(gym.Env):
         if b[0] <= out_of_bounds_x:
             return True
         return False
-        
+
     def step(self, action):
-        
+
         w = self.player.world
         b = w.ball_abs_pos  # Ball absolute position (x, y, z)
-        
+        snake_behaviour = False
+        if action != self.goalkeeper_status and not self.ready:
+            snake_behaviour = True
+
         if action != 0:
             behavior_name = action_dict[action]
             self.ready = self.player.behavior.execute(behavior_name)
@@ -261,21 +252,16 @@ class GoalkeeperEnv(gym.Env):
 
         reward = 0
         # self.obs[7] -> goalkeeper status
-        if action in [1, 2, 3] and self.obs[7] == 1:
-            self.goalkeeper_status = 0
+        if action in [1, 2, 3,4] and self.ready == 1:
             reward = 1 * 0
-        elif action == 4:
-            self.goalkeeper_status = 1
-        elif action in [1, 2, 3] and self.obs[7] == 0:
-            reward = -1 * 0
-        elif self.obs[7] == 0:
-            reward = -0.1 * 0
-            
+        elif action in [1, 2, 3,4] and self.ready == 0 and snake_behaviour:
+            reward = -0.2
+
         if self.is_goal(b):
             reward = -5  # Negative reward for conceding a goal
         elif self.is_save():
             reward = 10  # Positive reward for saving
-        if self.is_miss(b) and self.goalkeeper_status == 1:
+        if self.is_miss(b) and self.ready == 1:
             reward = 1  # Positive reward for stating ready
 
         # Check if episode is done
@@ -283,17 +269,9 @@ class GoalkeeperEnv(gym.Env):
 
         # Update state
         self.state = self.obs
-        print(f"Step: {self.step_counter-1}, Action: {action}, Reward: {reward}, Done: {done}")
+        print(f"Step: {self.step_counter - 1}, Action: {action}, Reward: {reward}, Done: {done}")
         return self.state, reward, done, {}
 
-    def is_goal(self):
-        if self.get_bal_pos()[0] < -15 and abs(self.get_bal_pos()[1]) < 1:
-            return True
-        return False
-
-    def is_save(self):
-        # velocity of the ball in x direction is negative or zero
-        return self.get_bal_vel()[0] <= 0
 
     def is_miss(self):
         # if ball is out of feild but not in goal
@@ -302,13 +280,10 @@ class GoalkeeperEnv(gym.Env):
         return False
 
     def get_bal_pos(self):
-        return self.obs[0], self.obs[1],self.obs[2]
+        return self.obs[0], self.obs[1], self.obs[2]
 
     def get_bal_vel(self):
         return self.obs[2], self.obs[3], self.obs[4]
-
-    def get_keeper_pos(self):
-        return self.obs[5], self.obs[6]
 
 
 class Train(Train_Base):
