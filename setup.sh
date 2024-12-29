@@ -23,15 +23,15 @@ sleep 3
 # # Start the third command with additional setup
 # if command -v gnome-terminal &> /dev/null; then
 #     # If gnome-terminal is available
-#     gnome-terminal --tab -- bash -c "unset PYTHONPATH && (python3 Run_Utils.py <<< '7'); exec bash" &
+#     gnome-terminal --tab -- bash -c "unset PYTHONPATH && (python3 Run_Utils.py <<< '20'); exec bash" &
 #     echo "Started Run_Utils.py in a new gnome-terminal tab with setup commands, PID $!"
 # elif command -v xterm &> /dev/null; then
 #     # If xterm is available
-#     xterm -hold -e "bash -c 'unset PYTHONPATH && (sleep 3; echo 7 | python3 Run_Utils.py)'" &
+#     xterm -hold -e "bash -c 'unset PYTHONPATH && (sleep 3; echo 20 | python3 Run_Utils.py)'" &
 #     echo "Started Run_Utils.py in a new xterm window with setup commands, PID $!"
 # else
 #     # If no GUI terminal is available, run in the background
-#     (unset PYTHONPATH && (python3 Run_Utils.py <<< '7')) &
+#     (unset PYTHONPATH && (python3 Run_Utils.py <<< '20')) &
 #     echo "Started Run_Utils.py in the background with setup commands, PID $!"
 # fi
 
