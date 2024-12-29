@@ -246,6 +246,7 @@ class GoalkeeperEnv(gym.Env):
     def get_keeper_pos(self):
         return self.obs[5], self.obs[6]
 
+    ### TODO: Fix the following functions
     
     def is_goal(self, b, out_of_bounds_x=-15):
         if b[0] <= out_of_bounds_x and -1 < b[1] < 1:
@@ -290,6 +291,8 @@ class GoalkeeperEnv(gym.Env):
             print("Miss")
             return True
         return False
+    
+    ### END TODO
         
     def step(self, action):
         w = self.player.world
