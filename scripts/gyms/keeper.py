@@ -113,6 +113,14 @@ class GoalkeeperEnv(gym.Env):
         self.goalkeeper_status = 0
         self.ready = 1
         self.goal_conceded = False
+        
+        self.position_history = []  # Keep track of ball positions
+        self.history_limit = 5  # Number of steps to track
+        self.movement_threshold = 0.1  # Minimum movement distance to consider the ball moving
+        self.stuck_counter = 0  # Count consecutive iterations with zero displacement
+        self.stuck_limit = 30  # Maximum allowed iterations with no displacement before reset
+
+        self.iterations = 0
 
 
         """
@@ -129,68 +137,61 @@ class GoalkeeperEnv(gym.Env):
         self.state = None  # Initialize state
         assert np.any(self.player.world.robot.cheat_abs_pos), "Cheats are not enabled! Run_Utils.py -> Server -> Cheats"
         self.reset()
-
-
-
+        
     def reset(self):
         '''
         Reset and stabilize the robot
         '''
-
         r = self.player.world.robot
         w = self.player.world
 
-
-        # to change to real position
+        # Reset variables
         goalkeeper_x = -14
         goalkeeper_y = 0
         self.ready = 1
         self.goalkeeper_status = 0
         self.goal_conceded = False
-
         self.step_counter = 0
+        self.ball_initialized = False  # Add a flag to track ball initialization
 
-        # loop to monitor the ball
-        self.position_history = []  # Keep track of ball positions
-        self.history_limit = 5  # Number of steps to track
-        self.movement_threshold = 0.1  # Minimum movement distance to consider the ball moving
-        self.stuck_counter = 0  # Count consecutive iterations with zero displacement
-        self.stuck_limit = 50  # Maximum allowed iterations with no displacement before reset
+        self.position_history = []  # Reset ball position history
+        self.stuck_counter = 0
 
-        self.iterations = 0
-
-
+        # Stabilize goalkeeper position
         for _ in range(25):
-            self.player.scom.unofficial_beam((goalkeeper_x, goalkeeper_y, 0.50),
-                                             0)  # beam player continuously (floating above ground)
+            self.player.scom.unofficial_beam((goalkeeper_x, goalkeeper_y, 0.50), 0)
             self.player.behavior.execute("Zero")
             self.sync()
 
-        # beam player to ground
         self.player.scom.unofficial_beam((goalkeeper_x, goalkeeper_y, r.beam_height), 0)
-        r.joints_target_speed[
-            0] = 0.01  # move head to trigger physics update (rcssserver3d bug when no joint is moving)
+        r.joints_target_speed[0] = 0.01  # Move head to trigger physics update
         self.sync()
 
-        # stabilize on ground
         for _ in range(7):
             self.player.behavior.execute("Zero")
             self.sync()
 
-        # Generate ball position and velocity
+        # Spawn ball if not already initialized
+        if not self.ball_initialized:
+            self.spawn_ball()
+            self.ball_initialized = True
+
+        return self.observe()
+
+    def spawn_ball(self):
+        '''
+        Generate and spawn a ball with random position and velocity.
+        '''
         ball_position = random_longshot()  # x, y position
         orientation = calculate_orientation_towards_goal(ball_position)  # Angle toward goal
         ball_velocity = (
-            math.cos(math.radians(orientation)) * random.uniform(10, 18),  # Increased velocity range
+            math.cos(math.radians(orientation)) * random.uniform(10, 18),
             math.sin(math.radians(orientation)) * random.uniform(10, 18),
             random.uniform(1, 5)  # Slight elevation
         )
-
-        # Spawn the ball
         self.player.scom.unofficial_move_ball((*ball_position, 0.042), ball_velocity)
         self.sync()
 
-        return self.observe()
 
     def sync(self):
         """ Run a single simulation step """
@@ -287,11 +288,12 @@ class GoalkeeperEnv(gym.Env):
 
 
     def is_miss(self, b, out_of_bounds_x=-15):
-        # if ball is out of field but not in goal
-        if b[0] <= out_of_bounds_x and b[1] < -1 or b[1] > 1:
+        # If ball is out of field but not in goal
+        if b[0] <= out_of_bounds_x and (b[1] < -1 or b[1] > 1):
             print("Miss")
             return True
         return False
+
     
     ### END TODO
         
@@ -340,9 +342,10 @@ class GoalkeeperEnv(gym.Env):
             elif self.is_save(bh) and not self.goal_conceded:
                 print("Current Step: ", self.step_counter)
                 reward = 1  # Positive reward for saving
-            if self.is_miss(b) and self.ready == 1 and not self.goal_conceded:
+            elif self.is_miss(b) and self.ready == 1 and not self.goal_conceded:
                 print("Current Step: ", self.step_counter)
-                reward = 0.5  # Positive reward for stating ready
+                reward = 0.5  # Positive reward for stating ready and missing
+
 
         # Check if episode is done
         done = (self.is_goal(b) or self.is_save(bh) or self.is_miss(b) or self.step_counter > MAX_STEP) and self.step_counter > 0
