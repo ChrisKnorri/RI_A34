@@ -287,7 +287,7 @@ class GoalkeeperEnv(gym.Env):
 
     def is_miss(self, b, out_of_bounds_x=-15):
         # if ball is out of field but not in goal
-        if b[0] <= out_of_bounds_x:
+        if b[0] <= out_of_bounds_x and b[1] < -1 or b[1] > 1:
             print("Miss")
             return True
         return False
