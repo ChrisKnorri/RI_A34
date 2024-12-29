@@ -243,13 +243,39 @@ class GoalkeeperEnv(gym.Env):
 
     
     def is_goal(self, b, out_of_bounds_x=-15):
-        if b[0] <= out_of_bounds_x and -1 <= b[1] <= 1:
+        if b[0] <= out_of_bounds_x and -1 < b[1] < 1:
             return True
         return False
 
-    def is_save(self):
-        # velocity of the ball in x direction is negative or zero
-        return self.get_bal_vel()[0] <= 0
+    def is_save(self, ball_abs_pos_history, out_of_bounds_x=-15):
+        """
+        Determines if the ball was saved based on its position history.
+
+        Parameters:
+        - ball_abs_pos_history: deque of absolute ball positions.
+        - out_of_bounds_x: float, x-coordinate beyond which the ball is considered out of bounds.
+
+        Returns:
+        - bool: True if the ball was saved, False otherwise.
+        """
+        if len(ball_abs_pos_history) < 2:
+            # Not enough data to determine a direction change
+            return False
+
+        # Check if the ball is within the critical area near the goal
+        current_pos = ball_abs_pos_history[0]
+        previous_pos = ball_abs_pos_history[1]
+
+        if current_pos[0] > out_of_bounds_x and -1 <= current_pos[1] <= 1:
+            # Compute the direction of movement
+            current_direction = current_pos[0] - previous_pos[0]
+
+            # If direction has changed (ball moved away from the goal)
+            if current_direction > 0:  # Positive x-direction
+                return True
+
+        return False
+
 
     def is_miss(self, b, out_of_bounds_x=-15):
         # if ball is out of field but not in goal
@@ -261,6 +287,7 @@ class GoalkeeperEnv(gym.Env):
         
         w = self.player.world
         b = w.ball_abs_pos  # Ball absolute position (x, y, z)
+        bh = w.ball_abs_pos_history
         snake_behaviour = False
         if action != self.goalkeeper_status and not self.ready:
             snake_behaviour = True
@@ -286,13 +313,13 @@ class GoalkeeperEnv(gym.Env):
 
         if self.is_goal(b):
             reward = -5  # Negative reward for conceding a goal
-        elif self.is_save():
+        elif self.is_save(bh):
             reward = 10  # Positive reward for saving
         if self.is_miss(b) and self.ready == 1:
             reward = 1  # Positive reward for stating ready
 
         # Check if episode is done
-        done = self.is_goal(b) or self.is_save() or self.is_miss(b) or self.step_counter > MAX_STEP
+        done = self.is_goal(b) or self.is_save(bh) or self.is_miss(b) or self.step_counter > MAX_STEP
 
         # Update ball position and game time
         b = w.ball_abs_pos  # Ball absolute position (x, y, z)
@@ -333,7 +360,7 @@ class Train(Train_Base):
     def train(self, args):
 
         # --------------------------------------- Learning parameters
-        n_envs = min(4, os.cpu_count())
+        n_envs = min(1, os.cpu_count())
         n_steps_per_env = 128  # RolloutBuffer is of size (n_steps_per_env * n_envs) (*RV: >=2048)
         minibatch_size = 64  # should be a factor of (n_steps_per_env * n_envs)
         total_steps = 50000  # (*RV: >=10M)
