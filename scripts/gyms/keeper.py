@@ -146,6 +146,15 @@ class GoalkeeperEnv(gym.Env):
 
         self.step_counter = 0
         self.goalkeeper_status = 1
+        
+        # loop to monitor the ball
+        self.position_history = []  # Keep track of ball positions
+        self.history_limit = 5  # Number of steps to track
+        self.movement_threshold = 0.1  # Minimum movement distance to consider the ball moving
+        self.stuck_counter = 0  # Count consecutive iterations with zero displacement
+        self.stuck_limit = 30  # Maximum allowed iterations with no displacement before reset
+
+        self.iterations = 0
 
 
         for _ in range(25):
@@ -169,11 +178,15 @@ class GoalkeeperEnv(gym.Env):
         ball_position = random_longshot()  # x, y position
         orientation = calculate_orientation_towards_goal(ball_position)  # Angle toward goal
         ball_velocity = (
-            math.cos(math.radians(orientation)) * random.uniform(20, 25),  # Increased velocity range
-            math.sin(math.radians(orientation)) * random.uniform(20, 25),
-            random.uniform(5, 7)  # Slight elevation
+            math.cos(math.radians(orientation)) * random.uniform(10, 18),  # Increased velocity range
+            math.sin(math.radians(orientation)) * random.uniform(10, 18),
+            random.uniform(1, 5)  # Slight elevation
         )
-            
+        
+        # Spawn the ball
+        self.player.scom.unofficial_move_ball((*ball_position, 0.042), ball_velocity)
+        self.sync()
+        
         return self.observe()
 
     def sync(self):
@@ -219,13 +232,14 @@ class GoalkeeperEnv(gym.Env):
         return self.obs
 
     def get_bal_pos(self):
-        return self.obs[0], self.obs[1]
+        return self.obs[0], self.obs[1],self.obs[2]
 
     def get_bal_vel(self):
-        return self.obs[2], self.obs[3]
+        return self.obs[2], self.obs[3], self.obs[4]
 
     def get_keeper_pos(self):
-        return self.obs[5], self.obs[6]    
+        return self.obs[5], self.obs[6]
+  
     
     def is_goal(self, b, out_of_bounds_x=-15):
         if b[0] <= out_of_bounds_x and -1 <= b[1] <= 1:
@@ -279,37 +293,39 @@ class GoalkeeperEnv(gym.Env):
             reward = 1  # Positive reward for stating ready
 
         # Check if episode is done
-        done = self.is_goal() or self.is_save() or self.is_miss() or self.step_counter > MAX_STEP
+        done = self.is_goal(b) or self.is_save() or self.is_miss(b) or self.step_counter > MAX_STEP
+        
+        # Update ball position and game time
+        b = w.ball_abs_pos  # Ball absolute position (x, y, z)
+        self.iterations += 1
 
+        # # Debug position and game time
+        # print(f"Ball position: {b}, Game time: {game_time}")
+
+        # Update position history
+        self.position_history.append(b[:2])  # Track only x, y for movement
+        if len(self.position_history) > self.history_limit:
+            self.position_history.pop(0)  # Maintain fixed history size
+
+        # Compute total displacement over the time window
+        if len(self.position_history) == self.history_limit and not done:
+            total_displacement = np.linalg.norm(np.array(self.position_history[-1]) - np.array(self.position_history[0]))
+            # print(f"Ball total displacement over last {history_limit} steps: {total_displacement}")
+
+            if total_displacement < self.movement_threshold:
+                self.stuck_counter += 1
+            else:
+                self.stuck_counter = 0  # Reset counter if movement is detected
+
+            # Condition 4: Ball hasn't moved significantly for too long
+            if self.stuck_counter >= self.stuck_limit:
+                print("Ball is not moving. Episode terminated.")
+                return self.state, 0, True, {}
+        
         # Update state
         self.state = self.obs
         print(f"Step: {self.step_counter-1}, Action: {action}, Reward: {reward}, Done: {done}")
         return self.state, reward, done, {}
-
-    def is_goal(self):
-        if self.get_bal_pos()[0] < -15 and abs(self.get_bal_pos()[1]) < 1:
-            return True
-        return False
-
-    def is_save(self):
-        # velocity of the ball in x direction is negative or zero
-        return self.get_bal_vel()[0] <= 0
-
-    def is_miss(self):
-        # if ball is out of feild but not in goal
-        if self.get_bal_pos()[0] < -15 and abs(self.get_bal_pos()[1]) > 1:
-            return True
-        return False
-
-    def get_bal_pos(self):
-        return self.obs[0], self.obs[1],self.obs[2]
-
-    def get_bal_vel(self):
-        return self.obs[2], self.obs[3], self.obs[4]
-
-    def get_keeper_pos(self):
-        return self.obs[5], self.obs[6]
-
 
 class Train(Train_Base):
     def __init__(self, script) -> None:
