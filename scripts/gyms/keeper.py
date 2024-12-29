@@ -32,6 +32,8 @@ action_dict = {
     2: "Fall_Right",
     3: "Fall_Front",
     4: "Get_Up",
+ #   5: "wallk_left",
+ #   6: "walk_right",
 
 }
 
@@ -98,6 +100,7 @@ def random_longshot():
 class GoalkeeperEnv(gym.Env):
     def __init__(self, ip, server_p, monitor_p, r_type, enable_draw) -> None:
 
+
         self.robot_type = r_type
 
         # Args: Server IP, Agent Port, Monitor Port, Uniform No., Robot Type, Team Name, Enable Log, Enable Draw
@@ -107,29 +110,21 @@ class GoalkeeperEnv(gym.Env):
         #  action space: 0 = do nothing, 1 = dive left, 2 = dive right
         #               3 = fall 4 = get up
         self.action_space = spaces.Discrete(5)
-        self.goalkeeper_status = 1
-        
-        # loop to monitor the ball
-        self.position_history = []  # Keep track of ball positions
-        self.history_limit = 5  # Number of steps to track
-        self.movement_threshold = 0.1  # Minimum movement distance to consider the ball moving
-        self.stuck_counter = 0  # Count consecutive iterations with zero displacement
-        self.stuck_limit = 30  # Maximum allowed iterations with no displacement before reset
-
-        self.iterations = 0
+        self.goalkeeper_status = 0
+        self.ready = 1
 
 
         """
          Define observation space (state variables) Example:            NO  
           [ball_x, ball_y, ball_z, velocity_x, velocity_y,velocity_z,  #ball_direction ?, goalkeeper_x, goalkeeper_y,
-           goalkeeper_status -> current keepers behaviour]
+           goalkeeper_status -> current keepers behaviour, ready]
         """
         self.observation_space = spaces.Box(
-            low=np.array([-50, 0, 0,   -30,-30,-30,    -15, -10,    0]),  # Min values
-            high=np.array([50, 30, 30,  30, -30,30,    10, 10,     len(action_dict)]),  # Max values
+            low=np.array([-50, 0, 0,   -30,-30,-30,    -15, -10,    0, 0]),  # Min values
+            high=np.array([50, 30, 30,  30, -30,30,    10, 10,     len(action_dict), 1]),  # Max values
             dtype=np.float32
         )
-        self.obs = np.zeros(9, np.float32)
+        self.obs = np.zeros(10, np.float32)
         self.state = None  # Initialize state
         assert np.any(self.player.world.robot.cheat_abs_pos), "Cheats are not enabled! Run_Utils.py -> Server -> Cheats"
         self.reset()
@@ -143,19 +138,7 @@ class GoalkeeperEnv(gym.Env):
 
         r = self.player.world.robot
         w = self.player.world
-        
-        # Define goal line parameters
-        out_of_bounds_x = -15  # x-coordinate 
-        game_time_limit = 5.0  # Maximum game time before restarting
-        
-        # Randomize initial state
-        ball_x = np.random.uniform(-50, 50)
-        ball_y = np.random.uniform(0, 30)
-        velocity_x = np.random.uniform(-30, 30)
-        velocity_y = np.random.uniform(10, 50)
-        goalkeeper_status = 1
-        
-        
+
 
         # to change to real position
         goalkeeper_x = -14
@@ -181,20 +164,16 @@ class GoalkeeperEnv(gym.Env):
         for _ in range(7):
             self.player.behavior.execute("Zero")
             self.sync()
-            
+
         # Generate ball position and velocity
         ball_position = random_longshot()  # x, y position
         orientation = calculate_orientation_towards_goal(ball_position)  # Angle toward goal
         ball_velocity = (
-            math.cos(math.radians(orientation)) * random.uniform(10, 18),  # Increased velocity range
-            math.sin(math.radians(orientation)) * random.uniform(10, 18),
-            random.uniform(1, 5)  # Slight elevation
+            math.cos(math.radians(orientation)) * random.uniform(20, 25),  # Increased velocity range
+            math.sin(math.radians(orientation)) * random.uniform(20, 25),
+            random.uniform(5, 7)  # Slight elevation
         )
-        
-        # Spawn the ball
-        self.player.scom.unofficial_move_ball((*ball_position, 0.042), ball_velocity)
-        self.sync()
-        
+            
         return self.observe()
 
     def sync(self):
@@ -233,20 +212,20 @@ class GoalkeeperEnv(gym.Env):
         # , goalkeeper_x, goalkeeper_y goalkeeper_status]
 
         self.obs = [ball_pos_x, ball_pos_y,ball_pos_z, ball_vel_x, ball_vel_y, predicted_pos_y,
-                    keeper_pos_x, keeper_pos_y, self.goalkeeper_status]
+                    keeper_pos_x, keeper_pos_y, self.goalkeeper_status, self.ready]
 
         # Ensure no NaNs or infinities
         self.obs = np.nan_to_num(self.obs, nan=0.0, posinf=1e6, neginf=-1e6).astype(np.float32)
         return self.obs
 
     def get_bal_pos(self):
-        return self.obs[0], self.obs[1],self.obs[2]
+        return self.obs[0], self.obs[1]
 
     def get_bal_vel(self):
-        return self.obs[2], self.obs[3], self.obs[4]
+        return self.obs[2], self.obs[3]
 
     def get_keeper_pos(self):
-        return self.obs[5], self.obs[6]   
+        return self.obs[5], self.obs[6]    
     
     def is_goal(self, b, out_of_bounds_x=-15):
         if b[0] <= out_of_bounds_x and -1 <= b[1] <= 1:
@@ -270,15 +249,17 @@ class GoalkeeperEnv(gym.Env):
         
         if action != 0:
             behavior_name = action_dict[action]
-            self.player.behavior.execute_to_completion(behavior_name)
+            self.ready = self.player.behavior.execute(behavior_name)
+            if self.ready:
+                self.goalkeeper_status = 0
+            else:
+                self.goalkeeper_status = action
 
         self.sync()  # run simulation step
         self.step_counter += 1
         self.observe()
 
         reward = 0
-        
-        
         # self.obs[7] -> goalkeeper status
         if action in [1, 2, 3] and self.obs[7] == 1:
             self.goalkeeper_status = 0
@@ -298,41 +279,37 @@ class GoalkeeperEnv(gym.Env):
             reward = 1  # Positive reward for stating ready
 
         # Check if episode is done
-        done = self.is_goal(b) or self.is_save() or self.is_miss(b) or self.step_counter > MAX_STEP
-        
-        
-        
-        # Update ball position and game time
-        b = w.ball_abs_pos  # Ball absolute position (x, y, z)
-        self.iterations += 1
+        done = self.is_goal() or self.is_save() or self.is_miss() or self.step_counter > MAX_STEP
 
-        # # Debug position and game time
-        # print(f"Ball position: {b}, Game time: {game_time}")
-
-        # Update position history
-        self.position_history.append(b[:2])  # Track only x, y for movement
-        if len(self.position_history) > self.history_limit:
-            self.position_history.pop(0)  # Maintain fixed history size
-
-        # Compute total displacement over the time window
-        if len(self.position_history) == self.history_limit and not done:
-            total_displacement = np.linalg.norm(np.array(self.position_history[-1]) - np.array(self.position_history[0]))
-            # print(f"Ball total displacement over last {history_limit} steps: {total_displacement}")
-
-            if total_displacement < self.movement_threshold:
-                self.stuck_counter += 1
-            else:
-                self.stuck_counter = 0  # Reset counter if movement is detected
-
-            # Condition 4: Ball hasn't moved significantly for too long
-            if self.stuck_counter >= self.stuck_limit:
-                print("Ball is not moving. Episode terminated.")
-                return self.state, 0, True, {}
-        
         # Update state
         self.state = self.obs
         print(f"Step: {self.step_counter-1}, Action: {action}, Reward: {reward}, Done: {done}")
         return self.state, reward, done, {}
+
+    def is_goal(self):
+        if self.get_bal_pos()[0] < -15 and abs(self.get_bal_pos()[1]) < 1:
+            return True
+        return False
+
+    def is_save(self):
+        # velocity of the ball in x direction is negative or zero
+        return self.get_bal_vel()[0] <= 0
+
+    def is_miss(self):
+        # if ball is out of feild but not in goal
+        if self.get_bal_pos()[0] < -15 and abs(self.get_bal_pos()[1]) > 1:
+            return True
+        return False
+
+    def get_bal_pos(self):
+        return self.obs[0], self.obs[1],self.obs[2]
+
+    def get_bal_vel(self):
+        return self.obs[2], self.obs[3], self.obs[4]
+
+    def get_keeper_pos(self):
+        return self.obs[5], self.obs[6]
+
 
 class Train(Train_Base):
     def __init__(self, script) -> None:
