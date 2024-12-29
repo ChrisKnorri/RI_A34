@@ -13,6 +13,7 @@ from gym import spaces
 import numpy as np
 from stable_baselines3 import PPO
 from stable_baselines3.common.env_util import make_vec_env
+import random
 
 '''
 Objective:
@@ -58,16 +59,16 @@ class GoalkeeperEnv(gym.Env):
         self.action_space = spaces.Discrete(5)
         self.goalkeeper_status = 1
 
-        # Define observation space (state variables) Example: [ball_x, ball_y, velocity_x, velocity_y, ball_direction ?
+        # Define observation space (state variables) Example: [ball_x, ball_y, ball_z, velocity_x, velocity_y, velocity_z, ball_direction ?
         # , goalkeeper_x, goalkeeper_y goalkeeper_status]
         # todo - make parameters domains work
 
         self.observation_space = spaces.Box(
-            low=np.array([-20, -20, -10, -10, -20, -20, -20, 0]),  # Min values
-            high=np.array([20, 20, 10, 10, 20, 20, 20, 1]),  # Max values
+            low=np.array([-20, -20, 0.042, -10, -10, -10, -20, -20, -20, 0]),  # Min values
+            high=np.array([20, 20, 20, 10, 10, 10, 20, 20, 20, 1]),  # Max values
             dtype=np.float32
         )
-        self.obs = np.zeros(8, np.float32)
+        self.obs = np.zeros(10, np.float32)
         assert np.any(self.player.world.robot.cheat_abs_pos), "Cheats are not enabled! Run_Utils.py -> Server -> Cheats"
         self.reset()
 

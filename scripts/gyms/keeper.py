@@ -119,13 +119,12 @@ class GoalkeeperEnv(gym.Env):
         self.player.terminate()
 
     def predict_ball_y_at_x(self, ball_pos_x, ball_pos_y, ball_vel_x, ball_vel_y, target_x):
-        # Calculate the time it takes for the ball to reach x = -15
+        if ball_vel_x == 0:
+            return ball_pos_y  # Assume the ball maintains its current y-position
         time_to_target_x = (target_x - ball_pos_x) / ball_vel_x
-
-        # Calculate the predicted y position at that time
         predicted_pos_y = ball_pos_y + ball_vel_y * time_to_target_x
-
         return predicted_pos_y
+
 
     def observe(self):
 
@@ -141,9 +140,14 @@ class GoalkeeperEnv(gym.Env):
 
         #[ball_x, ball_y, velocity_x, velocity_y, ball_direction
         # , goalkeeper_x, goalkeeper_y goalkeeper_status]
-        self.obs = [ball_pos_x,ball_pos_y,ball_vel_x,ball_vel_y, predicted_pos_y,keeper_pos_x,keeper_pos_y,self.goalkeeper_status]
 
+        self.obs = [ball_pos_x, ball_pos_y, ball_vel_x, ball_vel_y, predicted_pos_y, 
+                    keeper_pos_x, keeper_pos_y, self.goalkeeper_status]
+
+        # Ensure no NaNs or infinities
+        self.obs = np.nan_to_num(self.obs, nan=0.0, posinf=1e6, neginf=-1e6).astype(np.float32)
         return self.obs
+
 
 
 
@@ -184,6 +188,7 @@ class GoalkeeperEnv(gym.Env):
 
         # Update state
         self.state = self.obs
+        print(f"Step: {self.step_counter-1}, Action: {action}, Reward: {reward}, Done: {done}")
         return self.state, reward, done, {}
 
     def is_goal(self):

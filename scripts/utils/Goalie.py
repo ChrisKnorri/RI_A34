@@ -70,6 +70,7 @@ def random_longshot():
     # rotation = calculate_orientation_towards_goal((x, y, 0))
 
     return x, y  # , rotation
+
 def predict_ball_y_at_x(ball_pos_x, ball_pos_y, ball_vel_x, ball_vel_y, target_x):
     # Calculate the time it takes for the ball to reach the target x position
     time_to_target_x = (target_x - ball_pos_x) / ball_vel_x
@@ -130,9 +131,9 @@ class Goalie():
             ball_position = random_longshot()  # x, y position
             orientation = calculate_orientation_towards_goal(ball_position)  # Angle toward goal
             ball_velocity = (
-                math.cos(math.radians(orientation)) * random.uniform(14, 16),  # Increased velocity range
-                math.sin(math.radians(orientation)) * random.uniform(14, 16),
-                random.uniform(0.5, 4.5)  # Slight elevation
+                math.cos(math.radians(orientation)) * random.uniform(20, 25),  # Increased velocity range
+                math.sin(math.radians(orientation)) * random.uniform(20, 25),
+                random.uniform(5, 7)  # Slight elevation
             )
 
             # Spawn the ball
@@ -164,7 +165,7 @@ class Goalie():
                     action = decide_goalkeeper_action(b[0], b[1], speed[0], speed[1])
                     if action != "" and not in_motion:
                         print(f"Goalkeeper should: {action}")
-                        behavior.execute_to_completion(action)
+                        behavior.execute(action)
                         #in_motion = not behavior.execute(action)
 
                 # # Debug position and game time
