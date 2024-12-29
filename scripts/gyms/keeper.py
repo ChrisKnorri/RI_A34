@@ -189,7 +189,9 @@ class GoalkeeperEnv(gym.Env):
             math.sin(math.radians(orientation)) * random.uniform(10, 18),
             random.uniform(1, 5)  # Slight elevation
         )
-        self.player.scom.unofficial_move_ball((*ball_position, 0.042), ball_velocity)
+        
+        for _ in range(25):
+            self.player.scom.unofficial_move_ball((*ball_position, 0.042), ball_velocity)
         self.sync()
 
 
@@ -252,7 +254,6 @@ class GoalkeeperEnv(gym.Env):
     
     def is_goal(self, b, out_of_bounds_x=-15):
         if b[0] <= out_of_bounds_x and -1 < b[1] < 1:
-            print("Goal")
             return True
         return False
 
@@ -281,7 +282,6 @@ class GoalkeeperEnv(gym.Env):
 
             # If direction has changed (ball moved away from the goal)
             if current_direction > 0:  # Positive x-direction
-                print("Save")
                 return True
 
         return False
@@ -290,7 +290,6 @@ class GoalkeeperEnv(gym.Env):
     def is_miss(self, b, out_of_bounds_x=-15):
         # If ball is out of field but not in goal
         if b[0] <= out_of_bounds_x and (b[1] < -1 or b[1] > 1):
-            print("Miss")
             return True
         return False
 
@@ -337,13 +336,13 @@ class GoalkeeperEnv(gym.Env):
         if self.step_counter > 0:
             if self.is_goal(b):
                 self.goal_conceded = True
-                print("Current Step: ", self.step_counter)
+                print("Goal! Current Step: ", self.step_counter)
                 reward = -1  # Negative reward for conceding a goal
             elif self.is_save(bh) and not self.goal_conceded:
-                print("Current Step: ", self.step_counter)
+                print("Save! Current Step: ", self.step_counter)
                 reward = 1  # Positive reward for saving
             elif self.is_miss(b) and self.ready == 1 and not self.goal_conceded:
-                print("Current Step: ", self.step_counter)
+                print("Miss! Current Step: ", self.step_counter)
                 reward = 0.5  # Positive reward for stating ready and missing
 
 
