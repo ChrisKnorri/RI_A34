@@ -154,7 +154,7 @@ class GoalkeeperEnv(gym.Env):
         self.history_limit = 5  # Number of steps to track
         self.movement_threshold = 0.1  # Minimum movement distance to consider the ball moving
         self.stuck_counter = 0  # Count consecutive iterations with zero displacement
-        self.stuck_limit = 30  # Maximum allowed iterations with no displacement before reset
+        self.stuck_limit = 50  # Maximum allowed iterations with no displacement before reset
 
         self.iterations = 0
 
@@ -249,6 +249,7 @@ class GoalkeeperEnv(gym.Env):
     
     def is_goal(self, b, out_of_bounds_x=-15):
         if b[0] <= out_of_bounds_x and -1 < b[1] < 1:
+            print("Goal")
             return True
         return False
 
@@ -277,6 +278,7 @@ class GoalkeeperEnv(gym.Env):
 
             # If direction has changed (ball moved away from the goal)
             if current_direction > 0:  # Positive x-direction
+                print("Save")
                 return True
 
         return False
@@ -285,6 +287,7 @@ class GoalkeeperEnv(gym.Env):
     def is_miss(self, b, out_of_bounds_x=-15):
         # if ball is out of field but not in goal
         if b[0] <= out_of_bounds_x:
+            print("Miss")
             return True
         return False
         
@@ -322,10 +325,13 @@ class GoalkeeperEnv(gym.Env):
 
         if self.step_counter > 0:
             if self.is_goal(b):
+                print("Current Step: ", self.step_counter)
                 reward = -1  # Negative reward for conceding a goal
             elif self.is_save(bh):
+                print("Current Step: ", self.step_counter)
                 reward = 1  # Positive reward for saving
             if self.is_miss(b) and self.ready == 1:
+                print("Current Step: ", self.step_counter)
                 reward = 0.5  # Positive reward for stating ready
 
         # Check if episode is done
@@ -360,7 +366,7 @@ class GoalkeeperEnv(gym.Env):
 
         # Update state
         self.state = self.obs
-        print(f"Step: {self.step_counter - 1}, Action: {action}, Reward: {reward}, Done: {done}")
+        # print(f"Step: {self.step_counter - 1}, Action: {action}, Reward: {reward}, Done: {done}")
         return self.state, reward, done, {}
 
 class Train(Train_Base):
