@@ -7,6 +7,8 @@ from scripts.commons.Train_Base import Train_Base
 from time import sleep
 import os, gym
 import numpy as np
+import random
+import math
 
 '''
 Objective:
@@ -32,6 +34,65 @@ action_dict = {
     4: "Get_Up",
 
 }
+
+def calculate_orientation_towards_goal(point):
+    # Define the goal line
+    goal_line_x = -15
+    goal_line_y_min = -1
+    goal_line_y_max = 1
+
+    # Generate a random y-coordinate on the goal line
+    random_goal_y = random.uniform(goal_line_y_min, goal_line_y_max)
+    random_goal_point = (goal_line_x, random_goal_y)
+
+    # Calculate the angle to the random point on the goal line
+    dx = random_goal_point[0] - point[0]
+    dy = random_goal_point[1] - point[1]
+    angle_to_goal = math.degrees(math.atan2(dy, dx))
+
+    # Ensure the angle is within [0, 360]
+    if angle_to_goal < 0:
+        angle_to_goal += 360
+
+    return angle_to_goal
+
+
+def random_longshot():
+    # Define the constants for the problem
+    intersection_point = (-16, 0, 0)  # Center of the circular area
+    furthest_point_left = (-6, 10, 0)
+    furthest_point_right = (-6, -10, 0)
+    closest_point_left = (-10, 6, 0)
+    closest_point_right = (-10, -6, 0)
+
+    # Calculate the radii of the circles
+    furthest_radius = math.sqrt((furthest_point_left[0] - intersection_point[0]) ** 2 +
+                                (furthest_point_left[1] - intersection_point[1]) ** 2)
+    closest_radius = math.sqrt((closest_point_left[0] - intersection_point[0]) ** 2 +
+                               (closest_point_left[1] - intersection_point[1]) ** 2)
+
+    # Calculate the angles of the bounding lines in radians
+    angle_left = math.atan2(furthest_point_left[1] - intersection_point[1],
+                            furthest_point_left[0] - intersection_point[0])
+    angle_right = math.atan2(furthest_point_right[1] - intersection_point[1],
+                             furthest_point_right[0] - intersection_point[0])
+
+    # Ensure the angles are ordered correctly (left should be greater than right)
+    if angle_left < angle_right:
+        angle_left, angle_right = angle_right, angle_left
+
+    # Generate a random radius and angle within the specified range
+    radius = random.uniform(closest_radius, furthest_radius)
+    angle = random.uniform(angle_right, angle_left)
+
+    # Convert polar coordinates back to Cartesian coordinates
+    x = intersection_point[0] + radius * math.cos(angle)
+    y = intersection_point[1] + radius * math.sin(angle)
+
+    # Calculate the rotation to face towards a random point on the goal line
+    # rotation = calculate_orientation_towards_goal((x, y, 0))
+
+    return x, y  # , rotation
 
 
 class GoalkeeperEnv(gym.Env):
@@ -70,7 +131,12 @@ class GoalkeeperEnv(gym.Env):
         '''
 
         r = self.player.world.robot
-        world = self.player.world
+        w = self.player.world
+        
+        # Define goal line parameters
+        out_of_bounds_x = -15  # x-coordinate 
+        game_time_limit = 5.0  # Maximum game time before restarting
+        
         # Randomize initial state
         ball_x = np.random.uniform(-50, 50)
         ball_y = np.random.uniform(0, 30)
@@ -79,8 +145,8 @@ class GoalkeeperEnv(gym.Env):
         goalkeeper_status = 1
 
         # to change to real position
-        goalkeeper_x = 0
-        goalkeeper_y = -14
+        goalkeeper_x = -14
+        goalkeeper_y = 0
 
         self.step_counter = 0
         self.goalkeeper_status = 1
@@ -103,6 +169,15 @@ class GoalkeeperEnv(gym.Env):
             self.player.behavior.execute("Zero")
             self.sync()
 
+        # Generate ball position and velocity
+        ball_position = random_longshot()  # x, y position
+        orientation = calculate_orientation_towards_goal(ball_position)  # Angle toward goal
+        ball_velocity = (
+            math.cos(math.radians(orientation)) * random.uniform(20, 25),  # Increased velocity range
+            math.sin(math.radians(orientation)) * random.uniform(20, 25),
+            random.uniform(5, 7)  # Slight elevation
+        )
+            
         return self.observe()
 
     def sync(self):
@@ -148,12 +223,35 @@ class GoalkeeperEnv(gym.Env):
         self.obs = np.nan_to_num(self.obs, nan=0.0, posinf=1e6, neginf=-1e6).astype(np.float32)
         return self.obs
 
+    def get_bal_pos(self):
+        return self.obs[0], self.obs[1]
 
+    def get_bal_vel(self):
+        return self.obs[2], self.obs[3]
 
+    def get_keeper_pos(self):
+        return self.obs[5], self.obs[6]    
+    
+    def is_goal(self, b, out_of_bounds_x=-15):
+        if b[0] <= out_of_bounds_x and -1 <= b[1] <= 1:
+            return True
+        return False
 
+    def is_save(self):
+        # velocity of the ball in x direction is negative or zero
+        return self.get_bal_vel()[0] <= 0
+
+    def is_miss(self, b, out_of_bounds_x=-15):
+        # if ball is out of field but not in goal
+        if b[0] <= out_of_bounds_x:
+            return True
+        return False
+        
     def step(self, action):
-        r = self.player.world.robot
-
+        
+        w = self.player.world
+        b = w.ball_abs_pos  # Ball absolute position (x, y, z)
+        
         if action != 0:
             behavior_name = action_dict[action]
             self.player.behavior.execute_to_completion(behavior_name)
@@ -175,12 +273,12 @@ class GoalkeeperEnv(gym.Env):
             reward = -1 * 0
         elif self.obs[7] == 0:
             reward = -0.1 * 0
-
-        if self.is_goal():
+            
+        if self.is_goal(b):
             reward = -5  # Negative reward for conceding a goal
         elif self.is_save():
             reward = 10  # Positive reward for saving
-        if self.is_miss() and self.goalkeeper_status == 1:
+        if self.is_miss(b) and self.goalkeeper_status == 1:
             reward = 1  # Positive reward for stating ready
 
         # Check if episode is done
@@ -191,29 +289,9 @@ class GoalkeeperEnv(gym.Env):
         print(f"Step: {self.step_counter-1}, Action: {action}, Reward: {reward}, Done: {done}")
         return self.state, reward, done, {}
 
-    def is_goal(self):
-        if self.get_bal_pos()[0] < -15 and abs(self.get_bal_pos()[1]) < 1:
-            return True
-        return False
+        
 
-    def is_save(self):
-        # velocity of the ball in x direction is negative or zero
-        return self.get_bal_vel()[0] <= 0
 
-    def is_miss(self):
-        # if ball is out of feild but not in goal
-        if self.get_bal_pos()[0] < -15 and abs(self.get_bal_pos()[1]) > 1:
-            return True
-        return False
-
-    def get_bal_pos(self):
-        return self.obs[0], self.obs[1]
-
-    def get_bal_vel(self):
-        return self.obs[2], self.obs[3]
-
-    def get_keeper_pos(self):
-        return self.obs[5], self.obs[6]
 
 
 class Train(Train_Base):
