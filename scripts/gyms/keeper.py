@@ -129,8 +129,6 @@ class GoalkeeperEnv(gym.Env):
         assert np.any(self.player.world.robot.cheat_abs_pos), "Cheats are not enabled! Run_Utils.py -> Server -> Cheats"
         self.reset()
 
-
-
     def reset(self):
         '''
         Reset and stabilize the robot
