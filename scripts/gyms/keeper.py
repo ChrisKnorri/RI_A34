@@ -32,6 +32,8 @@ action_dict = {
     2: "Fall_Right",
     3: "Fall_Front",
     4: "Get_Up",
+    5: "Walk_Left",
+    6: "Walk_Right",
 
 }
 
