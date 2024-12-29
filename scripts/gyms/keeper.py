@@ -49,20 +49,22 @@ class GoalkeeperEnv(gym.Env):
         self.goalkeeper_status = 1
 
 
-
-        # Define observation space (state variables) Example: [ball_x, ball_y, velocity_x, velocity_y, ball_direction ?
-        # , goalkeeper_x, goalkeeper_y goalkeeper_status]
-        # todo - make parameters work
-
+        """
+         Define observation space (state variables) Example:            NO  
+          [ball_x, ball_y, ball_z, velocity_x, velocity_y,velocity_z,  #ball_direction ?, goalkeeper_x, goalkeeper_y,
+           goalkeeper_status -> current keepers behaviour]
+        """
         self.observation_space = spaces.Box(
-            low=np.array([-50, 0, -30, 10, 0, -50, -30, 0]),  # Min values
-            high=np.array([50, 30, 30, 50, 2, 50, 30, 1]),  # Max values
+            low=np.array([-50, 0, 0,   -30,-30,-30,    -15, -10,    0]),  # Min values
+            high=np.array([50, 30, 30,  30, -30,30,    10, 10,     len(action_dict)]),  # Max values
             dtype=np.float32
         )
-        self.obs = np.zeros(8, np.float32)
+        self.obs = np.zeros(9, np.float32)
         self.state = None  # Initialize state
         assert np.any(self.player.world.robot.cheat_abs_pos), "Cheats are not enabled! Run_Utils.py -> Server -> Cheats"
         self.reset()
+
+
 
     def reset(self):
         '''
@@ -131,17 +133,16 @@ class GoalkeeperEnv(gym.Env):
         r = self.player.world.robot
         world = self.player.world
 
-        ball_vel_x, ball_vel_y = world.get_ball_abs_vel(10)[:2]
-        ball_pos_x, ball_pos_y = world.ball_abs_pos[:2]  #is it up to date ?
+        ball_vel_x, ball_vel_y, ball_vel_z = world.get_ball_abs_vel(10)[:3]
+        ball_pos_x, ball_pos_y,ball_pos_z = world.ball_abs_pos[:3]  #is it up to date ?
         keeper_pos_x, keeper_pos_y = r.loc_head_position[:2] #is it up to date ?
 
         target_x = -15
         predicted_pos_y = self.predict_ball_y_at_x(ball_pos_x, ball_pos_y, ball_vel_x, ball_vel_y, target_x)
-
         #[ball_x, ball_y, velocity_x, velocity_y, ball_direction
         # , goalkeeper_x, goalkeeper_y goalkeeper_status]
 
-        self.obs = [ball_pos_x, ball_pos_y, ball_vel_x, ball_vel_y, predicted_pos_y, 
+        self.obs = [ball_pos_x, ball_pos_y,ball_pos_z, ball_vel_x, ball_vel_y, predicted_pos_y, ball_vel_z,
                     keeper_pos_x, keeper_pos_y, self.goalkeeper_status]
 
         # Ensure no NaNs or infinities
@@ -157,8 +158,6 @@ class GoalkeeperEnv(gym.Env):
         if action != 0:
             behavior_name = action_dict[action]
             self.player.behavior.execute_to_completion(behavior_name)
-
-        print(f"Action in {self.step_counter} : {action}")
 
         self.sync()  # run simulation step
         self.step_counter += 1
@@ -207,10 +206,10 @@ class GoalkeeperEnv(gym.Env):
         return False
 
     def get_bal_pos(self):
-        return self.obs[0], self.obs[1]
+        return self.obs[0], self.obs[1],self.obs[2]
 
     def get_bal_vel(self):
-        return self.obs[2], self.obs[3]
+        return self.obs[2], self.obs[3], self.obs[4]
 
     def get_keeper_pos(self):
         return self.obs[5], self.obs[6]
