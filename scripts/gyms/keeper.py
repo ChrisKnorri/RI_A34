@@ -112,6 +112,7 @@ class GoalkeeperEnv(gym.Env):
         self.action_space = spaces.Discrete(5)
         self.goalkeeper_status = 0
         self.ready = 1
+        self.goal_conceded = False
 
 
         """
@@ -145,9 +146,9 @@ class GoalkeeperEnv(gym.Env):
         goalkeeper_y = 0
         self.ready = 1
         self.goalkeeper_status = 0
+        self.goal_conceded = False
 
         self.step_counter = 0
-        self.goalkeeper_status = 1
 
         # loop to monitor the ball
         self.position_history = []  # Keep track of ball positions
@@ -333,12 +334,13 @@ class GoalkeeperEnv(gym.Env):
 
         if self.step_counter > 0:
             if self.is_goal(b):
+                self.goal_conceded = True
                 print("Current Step: ", self.step_counter)
                 reward = -1  # Negative reward for conceding a goal
-            elif self.is_save(bh):
+            elif self.is_save(bh) and not self.goal_conceded:
                 print("Current Step: ", self.step_counter)
                 reward = 1  # Positive reward for saving
-            if self.is_miss(b) and self.ready == 1:
+            if self.is_miss(b) and self.ready == 1 and not self.goal_conceded:
                 print("Current Step: ", self.step_counter)
                 reward = 0.5  # Positive reward for stating ready
 
