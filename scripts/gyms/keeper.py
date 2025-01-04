@@ -298,8 +298,8 @@ class GoalkeeperEnv(gym.Env):
         return False
     
     def step(self, action):
-        print(f"Step {self.step_counter}:")
-        print(f"Ball position: {self.player.world.ball_abs_pos}")
+        # print(f"Step {self.step_counter}:")
+        # print(f"Ball position: {self.player.world.ball_abs_pos}")
         w = self.player.world
         b = w.ball_abs_pos  # Ball absolute position (x, y, z)
         bh = w.ball_abs_pos_history
@@ -337,8 +337,8 @@ class GoalkeeperEnv(gym.Env):
         elif action in [1, 2, 3, 4] and self.ready == 0 and snake_behaviour:
             reward = -0.1
 
-        if self.fresh_episode and self.step_counter > 4:
-            print(f"Flags - Goal: {self.is_goal(b)}, Save: {self.is_save(bh)}, Miss: {self.is_miss(b)}")
+        if self.fresh_episode and self.step_counter > 15:
+            # print(f"Flags - Goal: {self.is_goal(b)}, Save: {self.is_save(bh)}, Miss: {self.is_miss(b)}")
             if self.is_goal(b):
                 self.goal_conceded = True
                 print("Goal! Current Step: ", self.step_counter)
@@ -357,11 +357,11 @@ class GoalkeeperEnv(gym.Env):
         # Check if episode is done
         done = (
             (self.step_counter > 0 and self.step_counter >= MAX_STEP) or
-            (self.step_counter > 4 and (self.is_goal(b) or self.is_save(bh) or self.is_miss(b)))
+            (self.step_counter > 15 and (self.is_goal(b) or self.is_save(bh) or self.is_miss(b)))
         )
 
-        print(f"Step Counter: {self.step_counter}, Max Step: {MAX_STEP}")
-        print(f"Done Condition: {done}")
+        # print(f"Step Counter: {self.step_counter}, Max Step: {MAX_STEP}")
+        # print(f"Done Condition: {done}")
 
         # Update ball position and game time
         b = w.ball_abs_pos  # Ball absolute position (x, y, z)
@@ -389,7 +389,8 @@ class GoalkeeperEnv(gym.Env):
 
         # Update state
         self.state = self.obs
-        print(f"Step {self.step_counter}: Done={done}, Reward={reward}")
+        if done:
+            print(f"Step {self.step_counter}: Done={done}, Reward={reward}")
 
         return self.state, reward, done, {}
 
@@ -401,7 +402,7 @@ class Train(Train_Base):
     def train(self, args):
 
         # --------------------------------------- Learning parameters
-        n_envs = min(1, os.cpu_count())
+        n_envs = min(4, os.cpu_count())
         n_steps_per_env = 128  # RolloutBuffer is of size (n_steps_per_env * n_envs) (*RV: >=2048)
         minibatch_size = 64  # should be a factor of (n_steps_per_env * n_envs)
         total_steps = 50000  # (*RV: >=10M)
