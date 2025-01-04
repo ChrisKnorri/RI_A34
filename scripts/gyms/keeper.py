@@ -118,7 +118,7 @@ class GoalkeeperEnv(gym.Env):
         self.history_limit = 5  # Number of steps to track
         self.movement_threshold = 0.1  # Minimum movement distance to consider the ball moving
         self.stuck_counter = 0  # Count consecutive iterations with zero displacement
-        self.stuck_limit = 30  # Maximum allowed iterations with no displacement before reset
+        self.stuck_limit = 40  # Maximum allowed iterations with no displacement before reset
 
         self.iterations = 0
 
@@ -157,6 +157,10 @@ class GoalkeeperEnv(gym.Env):
         self.position_history = []  # Reset ball position history
         self.stuck_counter = 0
 
+        # Clear world-specific histories
+        if hasattr(self.player.world, 'ball_abs_pos_history'):
+            self.player.world.ball_abs_pos_history.clear()
+        
         # Stabilize goalkeeper position
         for _ in range(25):
             self.player.scom.unofficial_beam((goalkeeper_x, goalkeeper_y, 0.50), 0)
@@ -176,6 +180,8 @@ class GoalkeeperEnv(gym.Env):
             self.spawn_ball()
             self.ball_initialized = True
 
+        self.fresh_episode = True
+        
         return self.observe()
 
     def spawn_ball(self):
@@ -185,8 +191,8 @@ class GoalkeeperEnv(gym.Env):
         ball_position = random_longshot()  # x, y position
         orientation = calculate_orientation_towards_goal(ball_position)  # Angle toward goal
         ball_velocity = (
-            math.cos(math.radians(orientation)) * random.uniform(10, 18),
-            math.sin(math.radians(orientation)) * random.uniform(10, 18),
+            math.cos(math.radians(orientation)) * random.uniform(13.5, 16.5),
+            math.sin(math.radians(orientation)) * random.uniform(13.5, 16.5),
             random.uniform(1, 5)  # Slight elevation
         )
         
@@ -250,8 +256,6 @@ class GoalkeeperEnv(gym.Env):
     def get_keeper_pos(self):
         return self.obs[5], self.obs[6]
 
-    ### TODO: Fix the following functions
-    
     def is_goal(self, b, out_of_bounds_x=-15):
         if b[0] <= out_of_bounds_x and -1 < b[1] < 1:
             return True
@@ -292,16 +296,16 @@ class GoalkeeperEnv(gym.Env):
         if b[0] <= out_of_bounds_x and (b[1] < -1 or b[1] > 1):
             return True
         return False
-
     
-    ### END TODO
-        
     def step(self, action):
+        print(f"Step {self.step_counter}:")
+        print(f"Ball position: {self.player.world.ball_abs_pos}")
         w = self.player.world
         b = w.ball_abs_pos  # Ball absolute position (x, y, z)
         bh = w.ball_abs_pos_history
         snake_behaviour = False
-
+        self.fresh_episode = True
+        
         # Ensure action is an integer, handling scalar or array input
         if isinstance(action, np.ndarray):
             action = int(action)
@@ -333,21 +337,31 @@ class GoalkeeperEnv(gym.Env):
         elif action in [1, 2, 3, 4] and self.ready == 0 and snake_behaviour:
             reward = -0.1
 
-        if self.step_counter > 0:
+        if self.fresh_episode and self.step_counter > 4:
+            print(f"Flags - Goal: {self.is_goal(b)}, Save: {self.is_save(bh)}, Miss: {self.is_miss(b)}")
             if self.is_goal(b):
                 self.goal_conceded = True
                 print("Goal! Current Step: ", self.step_counter)
                 reward = -1  # Negative reward for conceding a goal
+                self.fresh_episode = False
             elif self.is_save(bh) and not self.goal_conceded:
                 print("Save! Current Step: ", self.step_counter)
                 reward = 1  # Positive reward for saving
+                self.fresh_episode = False
             elif self.is_miss(b) and self.ready == 1 and not self.goal_conceded:
                 print("Miss! Current Step: ", self.step_counter)
                 reward = 0.5  # Positive reward for stating ready and missing
+                self.fresh_episode = False
 
 
         # Check if episode is done
-        done = (self.is_goal(b) or self.is_save(bh) or self.is_miss(b) or self.step_counter > MAX_STEP) and self.step_counter > 0
+        done = (
+            (self.step_counter > 0 and self.step_counter >= MAX_STEP) or
+            (self.step_counter > 4 and (self.is_goal(b) or self.is_save(bh) or self.is_miss(b)))
+        )
+
+        print(f"Step Counter: {self.step_counter}, Max Step: {MAX_STEP}")
+        print(f"Done Condition: {done}")
 
         # Update ball position and game time
         b = w.ball_abs_pos  # Ball absolute position (x, y, z)
@@ -369,10 +383,14 @@ class GoalkeeperEnv(gym.Env):
             # Condition 4: Ball hasn't moved significantly for too long
             if self.stuck_counter >= self.stuck_limit:
                 print("Ball is not moving. Episode terminated.")
+                print(f"Step {self.step_counter}: Done={done}, Reward={reward}")
+
                 return self.state, 0, True, {}
 
         # Update state
         self.state = self.obs
+        print(f"Step {self.step_counter}: Done={done}, Reward={reward}")
+
         return self.state, reward, done, {}
 
 
