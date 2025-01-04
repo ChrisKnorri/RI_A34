@@ -30,9 +30,9 @@ action_dict = {
     0: "",
     1: "Dive_Left",
     2: "Dive_Right",
-    3: "Fall_Front",
-    4: "Get_Up",
-    5: "shift",
+    # 3: "Fall_Front",
+    3: "Get_Up",
+    4: "shift",
 
 }
 
@@ -100,7 +100,7 @@ def random_longshot():
 class GoalkeeperEnv(gym.Env):
     def __init__(self, ip, server_p, monitor_p, r_type, enable_draw) -> None:
 
-
+        self.fresh_episode = False
         self.robot_type = r_type
 
         # Args: Server IP, Agent Port, Monitor Port, Uniform No., Robot Type, Team Name, Enable Log, Enable Draw
@@ -109,11 +109,11 @@ class GoalkeeperEnv(gym.Env):
 
         #  action space: 0 = do nothing, 1 = dive left, 2 = dive right
         #               3 = fall 4 = get up
-        self.action_space = spaces.Discrete(5)
+        self.action_space = spaces.Discrete(4) #todo
         self.goalkeeper_status = 0
         self.ready = 1
         self.goal_conceded = False
-        
+
         self.position_history = []  # Keep track of ball positions
         self.history_limit = 5  # Number of steps to track
         self.movement_threshold = 0.1  # Minimum movement distance to consider the ball moving
@@ -122,22 +122,24 @@ class GoalkeeperEnv(gym.Env):
 
         self.iterations = 0
 
-
         """
          Define observation space (state variables) Example:            NO  
           [ball_x, ball_y, ball_z, velocity_x, velocity_y,velocity_z,  #ball_direction ?, goalkeeper_x, goalkeeper_y,
-           goalkeeper_status -> current keepers behaviour, ready]
+           goalkeeper_status -> current keepers behaviour,step_count_in_action ,ready]
         """
         self.observation_space = spaces.Box(
-            low=np.array([-50, 0, 0, -30, -30, -30, -15, -10, 0, 0]),  # Min values
-            high=np.array([50, 30, 30, 30, -30, 30, 10, 10, len(action_dict), 1]),  # Max values
+            low=np.array([-50, 0, 0, -30, -30, -30, -15, -10, 0, 0, 0]),  # Min values
+            high=np.array([50, 30, 30, 30, -30, 30, 10, 10, len(action_dict), 20, 1]),  # Max values
             dtype=np.float32
         )
-        self.obs = np.zeros(10, np.float32)
+        self.obs = np.zeros(11, np.float32)
         self.state = None  # Initialize state
+        self.step_count_in_action = 0
+        self.goalkeeper_status = 0
+        self.ready = 1
         assert np.any(self.player.world.robot.cheat_abs_pos), "Cheats are not enabled! Run_Utils.py -> Server -> Cheats"
         self.reset()
-        
+
     def reset(self):
         '''
         Reset and stabilize the robot
@@ -148,11 +150,15 @@ class GoalkeeperEnv(gym.Env):
         # Reset variables
         goalkeeper_x = -14
         goalkeeper_y = 0
-        self.ready = 1
-        self.goalkeeper_status = 0
         self.goal_conceded = False
         self.step_counter = 0
         self.ball_initialized = False  # Add a flag to track ball initialization
+
+        # reset observations
+        self.step_count_in_action = 0
+        self.ready = 1
+        self.goalkeeper_status = 0
+        self.state = 0
 
         self.position_history = []  # Reset ball position history
         self.stuck_counter = 0
@@ -160,7 +166,7 @@ class GoalkeeperEnv(gym.Env):
         # Clear world-specific histories
         if hasattr(self.player.world, 'ball_abs_pos_history'):
             self.player.world.ball_abs_pos_history.clear()
-        
+
         # Stabilize goalkeeper position
         for _ in range(25):
             self.player.scom.unofficial_beam((goalkeeper_x, goalkeeper_y, 0.50), 0)
@@ -181,7 +187,7 @@ class GoalkeeperEnv(gym.Env):
             self.ball_initialized = True
 
         self.fresh_episode = True
-        
+
         return self.observe()
 
     def spawn_ball(self):
@@ -195,11 +201,10 @@ class GoalkeeperEnv(gym.Env):
             math.sin(math.radians(orientation)) * random.uniform(13.5, 16.5),
             random.uniform(1, 5)  # Slight elevation
         )
-        
+
         for _ in range(25):
             self.player.scom.unofficial_move_ball((*ball_position, 0.042), ball_velocity)
         self.sync()
-
 
     def sync(self):
         """ Run a single simulation step """
@@ -214,7 +219,7 @@ class GoalkeeperEnv(gym.Env):
         Draw.clear_all()
         self.player.terminate()
 
-    def predict_ball_y_at_x(self, target_x=-15):
+    def predict_ball_y_at_x(self, target_x=-14):
 
         ball_vel_x, ball_vel_y = self.get_bal_vel()[:2]
         ball_pos_x, ball_pos_y = self.get_bal_pos()[:2]
@@ -225,7 +230,6 @@ class GoalkeeperEnv(gym.Env):
         predicted_pos_y = ball_pos_y + ball_vel_y * time_to_target_x
         return predicted_pos_y
 
-
     def observe(self):
 
         r = self.player.world.robot
@@ -235,26 +239,24 @@ class GoalkeeperEnv(gym.Env):
         ball_pos_x, ball_pos_y, ball_pos_z = world.ball_abs_pos[:3]  # is it up to date ?
         keeper_pos_x, keeper_pos_y = r.loc_head_position[:2]  # is it up to date ?
 
-        target_x = -15
-        predicted_pos_y = self.predict_ball_y_at_x(target_x)
-        # [ball_x, ball_y, velocity_x, velocity_y, ball_direction
-        # , goalkeeper_x, goalkeeper_y goalkeeper_status]
+        target_x = -15  # trying to make target in line with goalkeeper, with intent to myb grabing more consistincy in predictions
+        predicted_pos_y = self.predict_ball_y_at_x()
 
-        self.obs = [ball_pos_x, ball_pos_y, ball_pos_z, ball_vel_x, ball_vel_y, predicted_pos_y,
-                    keeper_pos_x, keeper_pos_y, self.goalkeeper_status, self.ready]
+        self.obs = [ball_pos_x, ball_pos_y, ball_pos_z, ball_vel_x, ball_vel_y, ball_vel_z,
+                    keeper_pos_x, keeper_pos_y, self.goalkeeper_status, self.step_count_in_action, self.ready]
 
         # Ensure no NaNs or infinities
         self.obs = np.nan_to_num(self.obs, nan=0.0, posinf=1e6, neginf=-1e6).astype(np.float32)
         return self.obs
 
     def get_bal_pos(self):
-        return self.obs[0], self.obs[1],self.obs[2]
+        return self.obs[0], self.obs[1], self.obs[2]
 
     def get_bal_vel(self):
-        return self.obs[2], self.obs[3], self.obs[4]
+        return self.obs[3], self.obs[4], self.obs[5]
 
     def get_keeper_pos(self):
-        return self.obs[5], self.obs[6]
+        return self.obs[6], self.obs[7]
 
     def is_goal(self, b, out_of_bounds_x=-15):
         if b[0] <= out_of_bounds_x and -1 < b[1] < 1:
@@ -299,7 +301,7 @@ class GoalkeeperEnv(gym.Env):
         if b[0] <= out_of_bounds_x and (b[1] < -1 or b[1] > 1):
             return True
         return False
-    
+
     def step(self, action):
         # print(f"Step {self.step_counter}:")
         # print(f"Ball position: {self.player.world.ball_abs_pos}")
@@ -308,7 +310,7 @@ class GoalkeeperEnv(gym.Env):
         bh = w.ball_abs_pos_history
         snake_behaviour = False
         self.fresh_episode = True
-        
+        reward = 0
         # Ensure action is an integer, handling scalar or array input
         if isinstance(action, np.ndarray):
             action = int(action)
@@ -316,51 +318,62 @@ class GoalkeeperEnv(gym.Env):
             action = int(action)
 
         if action != self.goalkeeper_status and not self.ready:
-            snake_behaviour = True
+            snake_behaviour = True  # needs to be penelized as to  introduce keeper confidence
+            self.step_count_in_action = 0
 
-        if action != 0 and action != 5:
+        if action not in [0, 4]:  # todo
             behavior_name = action_dict[action]
+            self.step_count_in_action += 1
             self.ready = self.player.behavior.execute(behavior_name)
-            if self.ready:
+            if self.ready and action in [1, 2]:
+                print(f"action {behavior_name} finishen in {self.step_count_in_action} steps")
                 self.goalkeeper_status = 0
+                self.step_count_in_action = 0
+                reward += 0.2
             else:
                 self.goalkeeper_status = action
-        elif action == 5:
+        elif action == 4:
+
             x_coordinate = self.get_keeper_pos()[0]
-            y_coordinate = np.clip(self.predict_ball_y_at_x(int(x_coordinate))[1], -1.1, 1.1)
-            self.player.behavior.execute("Walk", (x_coordinate, y_coordinate), True, 0, True, None)  # Args: target, is_target_abs, ori, is_ori_abs, distance
+            y_coordinate = np.clip(self.predict_ball_y_at_x(-15), -1, 1)
+            #print(f"predicted at " + str(y_coordinate))
+            self.player.behavior.execute("Walk", (x_coordinate, y_coordinate), True, 0, True,
+                                         None)  # Args: target, is_target_abs, ori, is_ori_abs, distance
+        """
+            y_coordinate = np.clip(w.ball_abs_pos[1], -1, 1)
+            self.player.behavior.execute("Walk", (-14, y_coordinate), True, 0, True, None)
+        """
 
         self.sync()  # run simulation step
         self.step_counter += 1
         self.observe()
 
-        reward = 0
-        if action in [1, 2, 3, 4] and self.ready == 1:
-            reward = 1 * 0
-        elif action in [1, 2, 3, 4] and self.ready == 0 and snake_behaviour:
-            reward = -0.1
+        if snake_behaviour:
+            reward += -0.1
 
         if self.fresh_episode and self.step_counter > 15:
             # print(f"Flags - Goal: {self.is_goal(b)}, Save: {self.is_save(bh)}, Miss: {self.is_miss(b)}")
             if self.is_goal(b):
                 self.goal_conceded = True
-                print("Goal! Current Step: ", self.step_counter)
-                reward = -1  # Negative reward for conceding a goal
+                # print("Goal! Current Step: ", self.step_counter)
+                reward += -1  # Negative reward for conceding a goal
                 self.fresh_episode = False
             elif self.is_save(bh) and not self.goal_conceded:
-                print("Save! Current Step: ", self.step_counter)
-                reward = 1  # Positive reward for saving
+                # print("Save! Current Step: ", self.step_counter)
+                reward += 1  # Positive reward for saving
                 self.fresh_episode = False
             elif self.is_miss(b) and self.ready == 1 and not self.goal_conceded:
-                print("Miss! Current Step: ", self.step_counter)
-                reward = 0.5  # Positive reward for stating ready and missing
+                # print("Miss! Current Step: ", self.step_counter)
+                reward += 0.5  # Positive reward for stating ready and missing
                 self.fresh_episode = False
-
+            elif self.is_miss(b):
+                # print("Miss! Current Step: ", self.step_counter)
+                self.fresh_episode = False
 
         # Check if episode is done
         done = (
-            (self.step_counter > 0 and self.step_counter >= MAX_STEP) or
-            (self.step_counter > 15 and (self.is_goal(b) or self.is_save(bh) or self.is_miss(b)))
+                (self.step_counter > 0 and self.step_counter >= MAX_STEP) or
+                (self.step_counter > 15 and (self.is_goal(b) or self.is_save(bh) or self.is_miss(b)))
         )
 
         # print(f"Step Counter: {self.step_counter}, Max Step: {MAX_STEP}")
@@ -377,7 +390,8 @@ class GoalkeeperEnv(gym.Env):
 
         # Compute total displacement over the time window
         if len(self.position_history) == self.history_limit and not done:
-            total_displacement = np.linalg.norm(np.array(self.position_history[-1]) - np.array(self.position_history[0]))
+            total_displacement = np.linalg.norm(
+                np.array(self.position_history[-1]) - np.array(self.position_history[0]))
             if total_displacement < self.movement_threshold:
                 self.stuck_counter += 1
             else:
@@ -392,8 +406,8 @@ class GoalkeeperEnv(gym.Env):
 
         # Update state
         self.state = self.obs
-        if done:
-            print(f"Step {self.step_counter}: Done={done}, Reward={reward}")
+        #if done:
+           # print(f"Step {self.step_counter}: Done={done}, Reward={reward}")
 
         return self.state, reward, done, {}
 
@@ -405,10 +419,10 @@ class Train(Train_Base):
     def train(self, args):
 
         # --------------------------------------- Learning parameters
-        n_envs = min(1, os.cpu_count())
+        n_envs = min(4, os.cpu_count())
         n_steps_per_env = 128  # RolloutBuffer is of size (n_steps_per_env * n_envs) (*RV: >=2048)
         minibatch_size = 64  # should be a factor of (n_steps_per_env * n_envs)
-        total_steps = 50000  # (*RV: >=10M)
+        total_steps = 5000000  # (*RV: >=10M)
         learning_rate = 30e-4  # (*RV: 3e-4)
         # *RV -> Recommended value for more complex environments
         folder_name = f'Keeper_R{self.robot_type}'
