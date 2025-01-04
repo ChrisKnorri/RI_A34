@@ -273,23 +273,26 @@ class GoalkeeperEnv(gym.Env):
         - bool: True if the ball was saved, False otherwise.
         """
         if len(ball_abs_pos_history) < 2:
-            # Not enough data to determine a direction change
+            # Not enough data to determine a direction change or deflection
             return False
 
-        # Check if the ball is within the critical area near the goal
+        # Current and previous positions
         current_pos = ball_abs_pos_history[0]
         previous_pos = ball_abs_pos_history[1]
 
+        # Check if the ball is within the critical goal area
         if current_pos[0] > out_of_bounds_x and -1 <= current_pos[1] <= 1:
-            # Compute the direction of movement
-            current_direction = current_pos[0] - previous_pos[0]
+            # Compute the displacement vector
+            displacement_x = current_pos[0] - previous_pos[0]
+            displacement_y = current_pos[1] - previous_pos[1]
 
-            # If direction has changed (ball moved away from the goal)
-            if current_direction > 0:  # Positive x-direction
+            # Check if the ball has moved away from the goal (deflection)
+            # or has remained outside the goal area after interaction
+            if displacement_x > 0 or (current_pos[1] < -1 or current_pos[1] > 1):
+                # print(f"Save detected: Displacement (x, y): ({displacement_x}, {displacement_y})")
                 return True
 
         return False
-
 
     def is_miss(self, b, out_of_bounds_x=-15):
         # If ball is out of field but not in goal
@@ -402,7 +405,7 @@ class Train(Train_Base):
     def train(self, args):
 
         # --------------------------------------- Learning parameters
-        n_envs = min(4, os.cpu_count())
+        n_envs = min(1, os.cpu_count())
         n_steps_per_env = 128  # RolloutBuffer is of size (n_steps_per_env * n_envs) (*RV: >=2048)
         minibatch_size = 64  # should be a factor of (n_steps_per_env * n_envs)
         total_steps = 50000  # (*RV: >=10M)
