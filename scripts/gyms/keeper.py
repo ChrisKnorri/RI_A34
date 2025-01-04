@@ -191,9 +191,9 @@ class GoalkeeperEnv(gym.Env):
         ball_position = random_longshot()  # x, y position
         orientation = calculate_orientation_towards_goal(ball_position)  # Angle toward goal
         ball_velocity = (
-            math.cos(math.radians(orientation)) * random.uniform(13.5, 16.5),
-            math.sin(math.radians(orientation)) * random.uniform(13.5, 16.5),
-            random.uniform(1, 5)  # Slight elevation
+            math.cos(math.radians(orientation)) * random.uniform(14, 16),
+            math.sin(math.radians(orientation)) * random.uniform(14, 16),
+            random.uniform(1, 4.5)  # Slight elevation
         )
         
         for _ in range(25):
@@ -405,11 +405,11 @@ class Train(Train_Base):
     def train(self, args):
 
         # --------------------------------------- Learning parameters
-        n_envs = min(1, os.cpu_count())
+        n_envs = min(4, os.cpu_count())
         n_steps_per_env = 128  # RolloutBuffer is of size (n_steps_per_env * n_envs) (*RV: >=2048)
         minibatch_size = 64  # should be a factor of (n_steps_per_env * n_envs)
-        total_steps = 50000  # (*RV: >=10M)
-        learning_rate = 30e-4  # (*RV: 3e-4)
+        total_steps = 1000000  # (*RV: >=10M)
+        learning_rate = 3e-4  # (*RV: 3e-4)
         # *RV -> Recommended value for more complex environments
         folder_name = f'Keeper_R{self.robot_type}'
         model_path = f'./scripts/gyms/logs/{folder_name}/'
