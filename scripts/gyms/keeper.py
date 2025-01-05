@@ -9,6 +9,7 @@ import os, gym
 import numpy as np
 import random
 import math
+from collections import deque
 
 '''
 Objective:
@@ -219,28 +220,78 @@ class GoalkeeperEnv(gym.Env):
         Draw.clear_all()
         self.player.terminate()
 
-    def predict_ball_y_at_x(self, target_x=-14):
+    def predict_ball(self, ball_abs_pos_history, target_x=-15):
+        # Ensure there are enough positions in history
+        if len(ball_abs_pos_history) < 5:
+            return None  # Not enough data to make a prediction
 
-        ball_vel_x, ball_vel_y = self.get_bal_vel()[:2]
-        ball_pos_x, ball_pos_y = self.get_bal_pos()[:2]
-        if ball_vel_x == 0:
-            return ball_pos_y  # Assume the ball maintains its current y-position
-        time_to_target_x = (target_x - ball_pos_x) / ball_vel_x
+        # Use the last two ball positions
+        pos1 = np.array(ball_abs_pos_history[-2])
+        pos2 = np.array(ball_abs_pos_history[-1])
 
-        predicted_pos_y = ball_pos_y + ball_vel_y * time_to_target_x
-        return predicted_pos_y
+        # Calculate the trajectory vector
+        trajectory_vector = pos2 - pos1
+
+        # Avoid division by zero (vertical trajectory)
+        if trajectory_vector[0] == 0:
+            return None  # Indeterminate trajectory
+
+        # Calculate the slope and predict y at the target x
+        slope = trajectory_vector[1] / trajectory_vector[0]
+        predicted_y_at_goal_line = pos1[1] + slope * (target_x - pos1[0])
+
+        # Calculate closest point on the trajectory to the goalkeeper
+        def closest_point_on_line(goalkeeper_pos, pos1, pos2):
+            # Ensure all points are in 2D
+            pos1 = pos1[:2]
+            pos2 = pos2[:2]
+            goalkeeper_pos = goalkeeper_pos[:2]
+
+            # Line and point vector calculations
+            line_vector = pos2 - pos1
+            point_vector = goalkeeper_pos - pos1
+
+            line_length_sq = np.dot(line_vector, line_vector)
+            if line_length_sq == 0:
+                return pos1  # Line is a single point
+
+            # Project the point onto the line
+            t = np.dot(point_vector, line_vector) / line_length_sq
+            t = max(0, min(1, t))  # Clamp t to [0, 1] for segment
+            closest_point = pos1 + t * line_vector
+            return closest_point
+
+        goalkeeper_pos = np.array([-14, 0])
+        closest_point = closest_point_on_line(goalkeeper_pos, pos1, pos2)
+
+        # Determine diving direction based on the closest point
+        if closest_point[1] > goalkeeper_pos[1]:
+            dive_direction = "Dive_Left"
+        elif closest_point[1] < goalkeeper_pos[1]:
+            dive_direction = "Dive_Right"
+        else:
+            dive_direction = None  # Ball is directly at the goalkeeper's position
+
+        return {
+            "predicted_y_at_goal_line": predicted_y_at_goal_line,
+            "closest_point_to_goalkeeper": closest_point,
+            "dive_direction": dive_direction
+        }
+
+
 
     def observe(self):
 
         r = self.player.world.robot
         world = self.player.world
+        bh = world.ball_abs_pos_history
 
         ball_vel_x, ball_vel_y, ball_vel_z = world.get_ball_abs_vel(10)[:3]
         ball_pos_x, ball_pos_y, ball_pos_z = world.ball_abs_pos[:3]  # is it up to date ?
         keeper_pos_x, keeper_pos_y = r.loc_head_position[:2]  # is it up to date ?
 
         target_x = -15  # trying to make target in line with goalkeeper, with intent to myb grabing more consistincy in predictions
-        predicted_pos_y = self.predict_ball_y_at_x()
+        ball_trajectory_info = self.predict_ball(bh)
 
         self.obs = [ball_pos_x, ball_pos_y, ball_pos_z, ball_vel_x, ball_vel_y, ball_vel_z,
                     keeper_pos_x, keeper_pos_y, self.goalkeeper_status, self.step_count_in_action, self.ready]
@@ -311,6 +362,13 @@ class GoalkeeperEnv(gym.Env):
         snake_behaviour = False
         self.fresh_episode = True
         reward = 0
+        
+        # Use the predict_ball method to determine ball trajectory
+        ball_trajectory_info = self.predict_ball(bh)
+        if ball_trajectory_info:
+            closest_point = ball_trajectory_info["closest_point_to_goalkeeper"]
+            dive_direction = ball_trajectory_info["dive_direction"]
+        
         # Ensure action is an integer, handling scalar or array input
         if isinstance(action, np.ndarray):
             action = int(action)
@@ -330,14 +388,16 @@ class GoalkeeperEnv(gym.Env):
                 self.goalkeeper_status = 0
                 self.step_count_in_action = 0
                 reward += 0.2
+                if behavior_name != dive_direction:
+                    reward += -0.4
             else:
                 self.goalkeeper_status = action
         elif action == 4:
 
-            x_coordinate = self.get_keeper_pos()[0]
-            y_coordinate = np.clip(self.predict_ball_y_at_x(-15), -1, 1)
+            # x_coordinate = self.get_keeper_pos()[0]
+            # y_coordinate = np.clip(self.predict_ball(-15), -1, 1)
             #print(f"predicted at " + str(y_coordinate))
-            self.player.behavior.execute("Walk", (x_coordinate, y_coordinate), True, 0, True,
+            self.player.behavior.execute("Walk", closest_point, True, 0, True,
                                          None)  # Args: target, is_target_abs, ori, is_ori_abs, distance
         """
             y_coordinate = np.clip(w.ball_abs_pos[1], -1, 1)
