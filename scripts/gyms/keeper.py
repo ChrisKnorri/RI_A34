@@ -326,7 +326,7 @@ class GoalkeeperEnv(gym.Env):
             self.step_count_in_action += 1
             self.ready = self.player.behavior.execute(behavior_name)
             if self.ready and action in [1, 2]:
-                print(f"action {behavior_name} finishen in {self.step_count_in_action} steps")
+                print(f"action {behavior_name} finished in {self.step_count_in_action} steps")
                 self.goalkeeper_status = 0
                 self.step_count_in_action = 0
                 reward += 0.2
@@ -422,8 +422,8 @@ class Train(Train_Base):
         n_envs = min(4, os.cpu_count())
         n_steps_per_env = 128  # RolloutBuffer is of size (n_steps_per_env * n_envs) (*RV: >=2048)
         minibatch_size = 64  # should be a factor of (n_steps_per_env * n_envs)
-        total_steps = 5000000  # (*RV: >=10M)
-        learning_rate = 30e-4  # (*RV: 3e-4)
+        total_steps = 10000000  # (*RV: >=10M)
+        learning_rate = 3e-4  # (*RV: 3e-4)
         # *RV -> Recommended value for more complex environments
         folder_name = f'Keeper_R{self.robot_type}'
         model_path = f'./scripts/gyms/logs/{folder_name}/'
