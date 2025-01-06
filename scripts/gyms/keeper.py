@@ -110,9 +110,7 @@ class GoalkeeperEnv(gym.Env):
         self.player = Agent(ip, server_p, monitor_p, 1, self.robot_type, "Gym", True, enable_draw)
         self.step_counter = 0  # to limit episode size
 
-        #  action space: 0 = do nothing, 1 = dive left, 2 = dive right
-        #               3 = fall 4 = get up
-        self.action_space = spaces.Discrete(4) #todo
+        self.action_space = spaces.Discrete(len(action_dict))
         self.goalkeeper_status = 0
         self.ready = 1
         self.goal_conceded = False
@@ -281,8 +279,6 @@ class GoalkeeperEnv(gym.Env):
             "dive_direction": dive_direction
         }
 
-
-
     def observe(self):
 
         r = self.player.world.robot
@@ -370,13 +366,13 @@ class GoalkeeperEnv(gym.Env):
         snake_behaviour = False
         self.fresh_episode = True
         reward = 0
-        
+
         # Use the predict_ball method to determine ball trajectory
         ball_trajectory_info = self.predict_ball(bh)
         if ball_trajectory_info:
             closest_point = ball_trajectory_info["closest_point_to_goalkeeper"]
             dive_direction = ball_trajectory_info["dive_direction"]
-        
+
         # Ensure action is an integer, handling scalar or array input
         if isinstance(action, np.ndarray):
             action = int(action)
@@ -391,7 +387,7 @@ class GoalkeeperEnv(gym.Env):
             behavior_name = action_dict[action]
             self.step_count_in_action += 1
             self.ready = self.player.behavior.execute(behavior_name)
-            if action in [1,2,3,4] and self.step_counter < BALL_STARTS_ITER:
+            if action in [1, 2, 3, 4] and self.step_counter < BALL_STARTS_ITER:
                 reward += -1
             if self.ready and action in [1, 2]:
                 print(f"action {behavior_name} finished in {self.step_count_in_action} steps")
@@ -405,10 +401,9 @@ class GoalkeeperEnv(gym.Env):
         elif action == 5:
             # x_coordinate = self.get_keeper_pos()[0]
             # y_coordinate = np.clip(self.predict_ball(-15), -1, 1)
-            #print(f"predicted at " + str(y_coordinate))
+            # print(f"predicted at " + str(y_coordinate))
             self.player.behavior.execute("Walk", closest_point, True, 0, True,
                                          None)  # Args: target, is_target_abs, ori, is_ori_abs, distance
-
 
         self.sync()  # run simulation step
         self.step_counter += 1
@@ -472,8 +467,8 @@ class GoalkeeperEnv(gym.Env):
 
         # Update state
         self.state = self.obs
-        #if done:
-           # print(f"Step {self.step_counter}: Done={done}, Reward={reward}")
+        # if done:
+        # print(f"Step {self.step_counter}: Done={done}, Reward={reward}")
 
         return self.state, reward, done, {}
 
