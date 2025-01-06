@@ -366,8 +366,11 @@ class GoalkeeperEnv(gym.Env):
         # Use the predict_ball method to determine ball trajectory
         ball_trajectory_info = self.predict_ball(bh)
         if ball_trajectory_info:
-            closest_point = ball_trajectory_info["closest_point_to_goalkeeper"]
-            dive_direction = ball_trajectory_info["dive_direction"]
+            closest_point = ball_trajectory_info.get("closest_point_to_goalkeeper", None)
+            dive_direction = ball_trajectory_info.get("dive_direction", None)
+        else:
+            closest_point = None
+            dive_direction = None
         
         # Ensure action is an integer, handling scalar or array input
         if isinstance(action, np.ndarray):
@@ -375,28 +378,48 @@ class GoalkeeperEnv(gym.Env):
         else:
             action = int(action)
 
+        # Proximity threshold for deciding minimal action
+        proximity_threshold = 2.0  # Example value, can be tuned
+        keeper_pos = np.array(self.get_keeper_pos())
+        ball_distance = np.linalg.norm(np.array(closest_point) - keeper_pos) if closest_point is not None else float('inf')
+        
+        
         if action != self.goalkeeper_status and not self.ready:
             snake_behaviour = True  # needs to be penelized as to  introduce keeper confidence
             self.step_count_in_action = 0
 
-        if action not in [0, 4]:  # todo
+        if action not in [0, 4]:  # Exclude idle and shift actions
             behavior_name = action_dict[action]
             self.step_count_in_action += 1
             self.ready = self.player.behavior.execute(behavior_name)
             if self.ready and action in [1, 2]:
-                print(f"action {behavior_name} finished in {self.step_count_in_action} steps")
+                print(f"Action {behavior_name} finished in {self.step_count_in_action} steps")
                 self.goalkeeper_status = 0
                 self.step_count_in_action = 0
-                reward += 0.2
-                if behavior_name != dive_direction:
-                    reward += -0.4
+                
+                # Penalize unnecessary dives if ball is within proximity threshold
+                if ball_distance < proximity_threshold:
+                    reward += -1.0  # Heavy penalty for diving unnecessarily
+                    print("Unnecessary dive! Penalized.")
+                else:
+                    
+                    # Reward for correct dive direction
+                    if behavior_name == dive_direction:
+                        reward += 0.2  # Positive reward for correct dive
+                        print("Correct dive direction!")
+                    else:
+                        # Penalize wrong dive direction
+                        reward += -0.2  # Negative reward for wrong dive
+                        print("Wrong dive direction!")
+                    
             else:
                 self.goalkeeper_status = action
         elif action == 4:
-
-            # x_coordinate = self.get_keeper_pos()[0]
-            # y_coordinate = np.clip(self.predict_ball(-15), -1, 1)
+            # Execute movement toward predicted ball trajectory
             #print(f"predicted at " + str(y_coordinate))
+            if ball_distance < proximity_threshold:
+                reward += 0.5  # Reward walking to minimize action
+                print("Walking rewarded for minimal action!")
             self.player.behavior.execute("Walk", closest_point, True, 0, True,
                                          None)  # Args: target, is_target_abs, ori, is_ori_abs, distance
         """
@@ -404,6 +427,12 @@ class GoalkeeperEnv(gym.Env):
             self.player.behavior.execute("Walk", (-14, y_coordinate), True, 0, True, None)
         """
 
+        # keeper_pos = np.array(self.get_keeper_pos())
+        # proximity = np.linalg.norm(np.array(closest_point) - keeper_pos)
+        # shaped_reward = max(0, 1 - proximity / 8)  # Reward decreases as distance increases
+        # reward += shaped_reward
+        # print(f"Shaped reward based on proximity: {shaped_reward}")
+        
         self.sync()  # run simulation step
         self.step_counter += 1
         self.observe()
@@ -459,8 +488,8 @@ class GoalkeeperEnv(gym.Env):
 
             # Condition 4: Ball hasn't moved significantly for too long
             if self.stuck_counter >= self.stuck_limit:
-                print("Ball is not moving. Episode terminated.")
-                print(f"Step {self.step_counter}: Done={done}, Reward={reward}")
+                # print("Ball is not moving. Episode terminated.")
+                # print(f"Step {self.step_counter}: Done={done}, Reward={reward}")
 
                 return self.state, 0, True, {}
 
@@ -482,7 +511,7 @@ class Train(Train_Base):
         n_envs = min(4, os.cpu_count())
         n_steps_per_env = 128  # RolloutBuffer is of size (n_steps_per_env * n_envs) (*RV: >=2048)
         minibatch_size = 64  # should be a factor of (n_steps_per_env * n_envs)
-        total_steps = 10000000  # (*RV: >=10M)
+        total_steps = 5000000  # (*RV: >=10M)
         learning_rate = 3e-4  # (*RV: 3e-4)
         # *RV -> Recommended value for more complex environments
         folder_name = f'Keeper_R{self.robot_type}'
