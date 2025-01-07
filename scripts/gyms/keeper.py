@@ -26,15 +26,15 @@ from stable_baselines3 import PPO
 from stable_baselines3.common.env_util import make_vec_env
 
 MAX_STEP = 400  # 4 seconds
-BALL_STARTS_ITER = 40
+BALL_STARTS_ITER = 10
 
 action_dict = {
     0: "",
     1: "Dive_Left",
     2: "Dive_Right",
-    3: "Fall_Front",
-    4: "Get_Up",
-    5: "shift",
+    # 3: "Fall_Front",
+    3: "Get_Up",
+    4: "shift",
 
 }
 
@@ -354,7 +354,7 @@ class GoalkeeperEnv(gym.Env):
 
     def step(self, action):
         if self.step_counter == BALL_STARTS_ITER:
-            for _ in range(25):
+            for _ in range(5):
                 self.player.scom.unofficial_move_ball((*self.ball_pos, 0.042), self.ball_v)
 
         self.sync()
@@ -370,10 +370,10 @@ class GoalkeeperEnv(gym.Env):
         # Use the predict_ball method to determine ball trajectory
         ball_trajectory_info = self.predict_ball(bh)
         if ball_trajectory_info:
-            closest_point = ball_trajectory_info.get("closest_point_to_goalkeeper", None)
-            dive_direction = ball_trajectory_info.get("dive_direction", None)
+            closest_point = ball_trajectory_info.get("closest_point_to_goalkeeper")
+            dive_direction = ball_trajectory_info.get("dive_direction")
         else:
-            closest_point = None
+            closest_point = (-14, 0)
             dive_direction = None
         
         # Ensure action is an integer, handling scalar or array input
@@ -392,11 +392,11 @@ class GoalkeeperEnv(gym.Env):
             snake_behaviour = True  # needs to be penelized as to  introduce keeper confidence
             self.step_count_in_action = 0
 
-        if action not in [0, 5]:
+        if action not in [0, 4]:
             behavior_name = action_dict[action]
             self.step_count_in_action += 1
             self.ready = self.player.behavior.execute(behavior_name)
-            if action in [1, 2, 3, 4] and self.step_counter < BALL_STARTS_ITER:
+            if action in [1, 2, 3] and self.step_counter < BALL_STARTS_ITER:
                 reward += -1
             if self.ready and action in [1, 2]:
                 print(f"Action {behavior_name} finished in {self.step_count_in_action} steps")
@@ -420,13 +420,13 @@ class GoalkeeperEnv(gym.Env):
                     
             else:
                 self.goalkeeper_status = action
-        elif action == 5:
+        elif action == 4:
             # Execute movement toward predicted ball trajectory
             #print(f"predicted at " + str(y_coordinate))
-            if ball_distance < proximity_threshold:
-                reward += 0.5  # Reward walking to minimize action
-                print("Walking rewarded for minimal action!")
-            self.player.behavior.execute("Walk", closest_point, True, 0, True,
+            # if ball_distance < proximity_threshold:
+            #     reward += 0.5  # Reward walking to minimize action
+            #     print("Walking rewarded for minimal action!")
+            self.player.behavior.execute("Walk", closest_point, True, None, True,
                                          None)  # Args: target, is_target_abs, ori, is_ori_abs, distance
         """
             y_coordinate = np.clip(w.ball_abs_pos[1], -1, 1)
