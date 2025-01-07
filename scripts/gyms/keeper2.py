@@ -38,17 +38,7 @@ action_dict = {
 }
 
 
-def calculate_orientation(self, point):
-    # Calculate the angle to the random point on the goal line
-    dx = point[0] - self.get_keeper_pos()[0]
-    dy = point[1] - self.get_keeper_pos()[1]
-    angle = math.degrees(math.atan2(dy, dx))
 
-    # Ensure the angle is within [0, 360]
-    if angle < 0:
-        angle += 360
-
-    return angle
 
 
 def calculate_orientation_towards_goal(point):
@@ -205,6 +195,18 @@ class GoalkeeperEnv(gym.Env):
         self.fresh_episode = True
 
         return self.observe()
+
+    def calculate_orientation(self, point):
+        # Calculate the angle to the random point on the goal line
+        dx = point[0] - self.get_keeper_pos()[0]
+        dy = point[1] - self.get_keeper_pos()[1]
+        angle = math.degrees(math.atan2(dy, dx))
+
+        # Ensure the angle is within [0, 360]
+        if angle < 0:
+            angle += 360
+
+        return angle
 
     def spawn_ball(self):
         '''
@@ -439,7 +441,7 @@ class GoalkeeperEnv(gym.Env):
                 y_coordinate = closest_point[1] #np.clip(self.predict_ball_y_at_x(-15), -1, 1)
                 # print(f"predicted at " + str(y_coordinate))
                 self.player.behavior.execute("Walk", (x_coordinate, y_coordinate), True,
-                                             calculate_orientation(self.get_bal_pos()[:2]), True,
+                                             self.calculate_orientation(self.get_bal_pos()[:2],), True,
                                              None)  # Args: target, is_target_abs, ori, is_ori_abs, distance
                 if self.step_counter < BALL_STARTS_ITER:
                     reward += 0.01
