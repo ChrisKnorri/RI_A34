@@ -1,0 +1,4 @@
+reward,ep. length,rew. cumulative avg., ep. len. cumulative avg.
+-1.1,11,-1.1,11.0
+0,34,-0.55,22.5
+-0.75,9,-0.6166666666666667,18.0
