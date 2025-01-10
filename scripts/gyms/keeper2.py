@@ -36,6 +36,15 @@ action_dict = {
     5: "shift",
 
 }
+action_dict_cost = {
+    0: 1,
+    1: 10,
+    2: 10,
+    3: 15,
+    4: 40,
+    5: 1,
+
+}
 
 
 def calculate_orientation_towards_goal(point):
@@ -117,12 +126,13 @@ class GoalkeeperEnv(gym.Env):
         self.goalkeeper_status = 0
         self.ready = 1
         self.goal_conceded = False
+        self.dive_reward = False
 
         self.position_history = []  # Keep track of ball positions
         self.history_limit = 5  # Number of steps to track
         self.movement_threshold = 0.1  # Minimum movement distance to consider the ball moving
         self.stuck_counter = 0  # Count consecutive iterations with zero displacement
-        self.stuck_limit = 10  # Maximum allowed iterations with no displacement before reset
+        self.stuck_limit = 30  # Maximum allowed iterations with no displacement before reset
 
         self.iterations = 0
 
@@ -132,8 +142,8 @@ class GoalkeeperEnv(gym.Env):
            goalkeeper_status -> current keepers behaviour,step_count_in_action ,ready]
         """
         self.observation_space = spaces.Box(
-            low=np.array([-50, 0, 0, -30, -30, -30, -15, -10, 0, 0]),  # Min values
-            high=np.array([50, 30, 30, 30, -30, 30, 10, 10, len(action_dict), 400]),  # Max values
+            low=np.array([-50, 0, 0, -30, -30, -30, -15, -10, 0,0]),  # Min values
+            high=np.array([50, 30, 30, 30, -30, 30, 10, 10, len(action_dict),1]),  # Max values
             dtype=np.float32
         )
         self.obs = np.zeros(10, np.float32)
@@ -154,6 +164,7 @@ class GoalkeeperEnv(gym.Env):
         # Reset variables
         goalkeeper_x = -14
         goalkeeper_y = 0
+        self.dive_reward = False
         self.goal_conceded = False
         self.step_counter = 0
         self.ball_initialized = False  # Add a flag to track ball initialization
@@ -214,9 +225,9 @@ class GoalkeeperEnv(gym.Env):
         ball_position = random_longshot()  # x, y position
         orientation = calculate_orientation_towards_goal(ball_position)  # Angle toward goal
         ball_velocity = (
-            math.cos(math.radians(orientation)) * random.uniform(13.5, 16.5),
-            math.sin(math.radians(orientation)) * random.uniform(13.5, 16.5),
-            random.uniform(1, 5)  # Slight elevation
+            math.cos(math.radians(orientation)) * random.uniform(13.25, 15),
+            math.sin(math.radians(orientation)) * random.uniform(13.25, 15),
+            random.uniform(2, 4)  # Slight elevation
         )
         self.ball_v = ball_velocity
         self.ball_pos = ball_position
@@ -250,12 +261,13 @@ class GoalkeeperEnv(gym.Env):
 
     def predict_ball(self, ball_abs_pos_history, target_x=-15):
         # Ensure there are enough positions in history
-        if len(ball_abs_pos_history) < 5:
-            return None  # Not enough data to make a prediction
-
-        # Use the last two ball positions
-        pos1 = np.array(ball_abs_pos_history[-2])
-        pos2 = np.array(ball_abs_pos_history[-1])
+        pos1, pos2 = None, None
+        if len(ball_abs_pos_history) < 5 or self.step_counter < BALL_STARTS_ITER:
+            pos1 = np.array(self.get_bal_pos()[:2])
+            pos2 = np.array([-15, 0])
+        else:
+            pos1 = np.array(ball_abs_pos_history[-4])
+            pos2 = np.array(ball_abs_pos_history[-1])
 
         # Calculate the trajectory vector
         trajectory_vector = pos2 - pos1
@@ -292,10 +304,16 @@ class GoalkeeperEnv(gym.Env):
         goalkeeper_pos = np.array(self.get_keeper_pos()[:2])
         closest_point = closest_point_on_line(goalkeeper_pos, pos1, pos2)
 
+        time_to_keeper = (goalkeeper_pos[0] - pos2[0]) / trajectory_vector[0]
+        intersection_point = pos2 + trajectory_vector * time_to_keeper
+
+        time_to_goal = (target_x - pos2[0]) / trajectory_vector[0]
+        predicted_point = pos2 + trajectory_vector * time_to_goal
+        predicted_y_at_goal_line = predicted_point[1]
         # Determine diving direction based on the closest point
-        if closest_point[1] > goalkeeper_pos[1]:
+        if intersection_point[1] > goalkeeper_pos[1]:
             dive_direction = "Dive_Left"
-        elif closest_point[1] < goalkeeper_pos[1]:
+        elif intersection_point[1] < goalkeeper_pos[1]:
             dive_direction = "Dive_Right"
         else:
             dive_direction = None  # Ball is directly at the goalkeeper's position
@@ -303,6 +321,7 @@ class GoalkeeperEnv(gym.Env):
         return {
             "predicted_y_at_goal_line": predicted_y_at_goal_line,
             "closest_point_to_goalkeeper": closest_point,
+            "intersection_point": intersection_point,
             "dive_direction": dive_direction
         }
 
@@ -311,12 +330,15 @@ class GoalkeeperEnv(gym.Env):
         r = self.player.world.robot
         world = self.player.world
 
-        ball_vel_x, ball_vel_y, ball_vel_z = world.get_ball_abs_vel(5)[:3]
+        ball_vel_x, ball_vel_y, ball_vel_z = world.get_ball_abs_vel(1)[:3]
         ball_pos_x, ball_pos_y, ball_pos_z = world.ball_abs_pos[:3]  # is it up to date ?
         keeper_pos_x, keeper_pos_y = r.loc_head_position[:2]  # is it up to date ?
 
-        self.obs = [ball_pos_x, ball_pos_y,ball_pos_z, ball_vel_x, ball_vel_y, ball_vel_z,
-                    keeper_pos_x, keeper_pos_y, self.goalkeeper_status, self.step_counter]
+        moved = 1
+        if not self.ball_moved:
+            moved = 0
+        self.obs = [ball_pos_x, ball_pos_y, ball_pos_z, ball_vel_x, ball_vel_y, ball_vel_z,
+                    keeper_pos_x, keeper_pos_y, self.goalkeeper_status, moved]
 
         # Ensure no NaNs or infinities
         self.obs = np.nan_to_num(self.obs, nan=0.0, posinf=1e6, neginf=-1e6).astype(np.float32)
@@ -382,11 +404,13 @@ class GoalkeeperEnv(gym.Env):
             for _ in range(25):
                 self.player.scom.unofficial_move_ball((*self.ball_pos, 0.042), self.ball_v)
 
+        # print(f"step: {self.step_counter} ->  {action_dict[action]}")
+
         w = self.player.world
         b = w.ball_abs_pos  # Ball absolute position (x, y, z)
         bh = w.ball_abs_pos_history
-        snake_behaviour = False
         self.fresh_episode = True
+
         reward = 0
         # Ensure action is an integer, handling scalar or array input
         if isinstance(action, np.ndarray):
@@ -396,18 +420,22 @@ class GoalkeeperEnv(gym.Env):
 
         ball_trajectory_info = self.predict_ball(bh)
         closest_point = None
+        intersection_point = None
+        dive_direction = None
         if ball_trajectory_info:
             closest_point = ball_trajectory_info["closest_point_to_goalkeeper"]
             dive_direction = ball_trajectory_info["dive_direction"]
+            intersection_point = ball_trajectory_info["intersection_point"]
+
         proximity_threshold = 0.1  # Example value, can be tuned
         keeper_pos = np.array(self.get_keeper_pos())
         ball_distance = np.linalg.norm(np.array(closest_point) - keeper_pos) if closest_point is not None else float(
             'inf')
 
         if self.goalkeeper_status in [1, 2, 3] and action not in [0, 4]:  # 0 and  are only plausable actions after fall
-            reward += -0.4  # penelize twiching o the ground
+            reward += -0.1  # penelize twiching o the ground
         elif self.goalkeeper_status in [1, 2, 3] and action == 4:
-            reward += 0.1
+            reward += 0.05
 
         for i in range(10):
             self.observe()
@@ -417,15 +445,16 @@ class GoalkeeperEnv(gym.Env):
                 self.ready = self.player.behavior.execute(behavior_name)
 
                 if action in [1, 2, 3, 4] and self.step_counter < BALL_STARTS_ITER:
-                    reward += -1
+                    reward += -0.02
                 if self.ready:
                     if action in [1, 2]:
                         if ball_distance < proximity_threshold:
-                            reward += -0.2  # Heavy penalty for diving unnecessarily
+                            reward += -0.1  # Heavy penalty for diving unnecessarily
                         else:
                             # Reward for correct dive direction
-                            if behavior_name == dive_direction:
-                                reward += 0.2  # Positive reward for correct dive
+                            if behavior_name == dive_direction and not self.dive_reward:
+                                reward += 0.4  # Positive reward for correct dive
+                                self.dive_reward =True
                             else:
                                 # Penalize wrong dive direction
                                 reward += -0.2  # Negative reward for wrong dive
@@ -435,40 +464,39 @@ class GoalkeeperEnv(gym.Env):
                     self.sync()
                     break
             elif action == 5:
-                if self.step_counter <= BALL_STARTS_ITER or closest_point is None:
+                if closest_point is None:
                     closest_point = self.get_bal_pos()
-                closest_point = np.clip(closest_point[0], -15, -13.5), np.clip(closest_point[1], 0.9, 0.9)
+                closest_point = np.clip(closest_point[0], -15, -13.5), np.clip(closest_point[1], -0.9,
+                                                                                         0.9)
                 x_coordinate = closest_point[0]  # self.get_keeper_pos()[0]
                 y_coordinate = closest_point[1]  # np.clip(self.predict_ball_y_at_x(-15), -1, 1)
-                # print(f"predicted at " + str(y_coordinate))
                 self.player.behavior.execute("Walk", (x_coordinate, y_coordinate), True,
                                              self.calculate_orientation(self.get_bal_pos()[:2], ), True,
                                              None)  # Args: target, is_target_abs, ori, is_ori_abs, distance
-                if self.step_counter < BALL_STARTS_ITER:
-                    reward += 0.02
-                else:
+                # self.calculate_orientation(self.get_bal_pos()[:2], )
+                if not self.ball_moved:
                     reward += 0.01
-
+                self.iterations += 1
+                self.step_counter += 1
             self.sync()
-            self.iterations += 1
-            self.step_counter += 1
 
         self.goalkeeper_status = action
         self.observe()
+        self.sync()
 
-        if self.fresh_episode and self.step_counter > 15:
+        if self.fresh_episode and self.step_counter > 2:
             # print(f"Flags - Goal: {self.is_goal(b)}, Save: {self.is_save(bh)}, Miss: {self.is_miss(b)}")
             if self.is_goal(b):
                 self.goal_conceded = True
-                #print("Goal! Current Step: ", self.step_counter)
+                # print("Goal! Current Step: ", self.step_counter)
                 reward += -1  # Negative reward for conceding a goal
                 self.fresh_episode = False
             elif self.is_save(bh) and not self.goal_conceded:
-                #print("Save! Current Step: ", self.step_counter)
+                # print("Save! Current Step: ", self.step_counter)
                 reward += 1  # Positive reward for saving
                 self.fresh_episode = False
             elif self.is_miss(b):
-                #print("Miss! Current Step: ", self.step_counter)
+                # print("Miss! Current Step: ", self.step_counter)
                 self.fresh_episode = False
 
         # Check if episode is done
@@ -523,7 +551,7 @@ class Train(Train_Base):
         n_steps_per_env = 128  # RolloutBuffer is of size (n_steps_per_env * n_envs) (*RV: >=2048)
         minibatch_size = 64  # should be a factor of (n_steps_per_env * n_envs)
         total_steps = 1000000  # (*RV: >=10M)
-        learning_rate = 15e-4  # (*RV: 3e-4)
+        learning_rate = 5e-4  # (*RV: 3e-4)
         # *RV -> Recommended value for more complex environments
         folder_name = f'Keeper_R{self.robot_type}'
         model_path = f'./scripts/gyms/logs/{folder_name}/'

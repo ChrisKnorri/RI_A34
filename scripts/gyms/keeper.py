@@ -198,9 +198,9 @@ class GoalkeeperEnv(gym.Env):
         ball_position = random_longshot()  # x, y position
         orientation = calculate_orientation_towards_goal(ball_position)  # Angle toward goal
         ball_velocity = (
-            math.cos(math.radians(orientation)) * random.uniform(14, 16),
-            math.sin(math.radians(orientation)) * random.uniform(14, 16),
-            random.uniform(1, 4.5)  # Slight elevation
+            math.cos(math.radians(orientation)) * random.uniform(13.25, 15),
+            math.sin(math.radians(orientation)) * random.uniform(13.25, 15),
+            random.uniform(2.6, 3.25)  # Slight elevation
         )
         self.ball_v = ball_velocity
         self.ball_pos = ball_position
@@ -226,7 +226,6 @@ class GoalkeeperEnv(gym.Env):
         if len(ball_abs_pos_history) < 5:
             return None  # Not enough data to make a prediction
 
-        # Use the last two ball positions
         pos1 = np.array(ball_abs_pos_history[-2])
         pos2 = np.array(ball_abs_pos_history[-1])
 
@@ -353,13 +352,14 @@ class GoalkeeperEnv(gym.Env):
         return False
 
     def step(self, action):
+
+
         if self.step_counter == BALL_STARTS_ITER:
             for _ in range(5):
                 self.player.scom.unofficial_move_ball((*self.ball_pos, 0.042), self.ball_v)
 
         self.sync()
-        # print(f"Step {self.step_counter}:")
-        # print(f"Ball position: {self.player.world.ball_abs_pos}")
+
         w = self.player.world
         b = w.ball_abs_pos  # Ball absolute position (x, y, z)
         bh = w.ball_abs_pos_history
