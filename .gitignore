@@ -4,7 +4,6 @@ config.json
 # ignore logs but not logger
 /logs/*
 !/logs/*.py
-/scripts/gyms/logs
 
 # ignore exported models
 /scripts/gyms/export
