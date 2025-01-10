@@ -21,4 +21,4 @@
 2. `cd RI_A34`
 3. `./setup.sh`
 4. A second terminal should pop up after 5 seconds with the Utils. If you want to shutdown, Ctrl+C in the Util's Tab first, then in the original terminal.
-5. Choose "20 - keeper" or "21 - keeper2", then "1 - Test" and choose a model.
+5. In the second terminal, choose in the Gym Tab "20 - keeper" or "21 - keeper2", then "1 - Test" and choose a model to be tested.
