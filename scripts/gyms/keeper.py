@@ -200,7 +200,7 @@ class GoalkeeperEnv(gym.Env):
         ball_velocity = (
             math.cos(math.radians(orientation)) * random.uniform(13.25, 14),
             math.sin(math.radians(orientation)) * random.uniform(13.25, 14),
-            random.uniform(2.6, 3.25)  # Slight elevation
+            random.uniform(2.6, 3.3)  # Slight elevation
         )
 
         for _ in range(25):
@@ -222,7 +222,7 @@ class GoalkeeperEnv(gym.Env):
 
     def predict_ball(self, ball_abs_pos_history, target_x=-15):
         # Ensure there are enough positions in history
-        if len(ball_abs_pos_history) < 2:
+        if len(ball_abs_pos_history) < 5:
             return None  # Not enough data to make a prediction
 
         # Use the last two ball positions
@@ -602,3 +602,7 @@ This example scales poorly with the number of CPUs because:
 - The simulation workload is light
 - For these reasons, the IPC overhead is significant
 '''
+
+# Train start:    06/01/2025 00:35:45
+# Train end:      06/01/2025 08:32:59
+# Train duration: 7:57:13

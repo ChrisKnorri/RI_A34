@@ -23,6 +23,9 @@ from gym import spaces
 import numpy as np
 from stable_baselines3 import PPO
 from stable_baselines3.common.env_util import make_vec_env
+import logging
+from datetime import datetime
+import csv
 
 MAX_STEP = 400  # 4 seconds
 BALL_STARTS_ITER = 20
@@ -109,7 +112,7 @@ def random_longshot():
 
 class GoalkeeperEnv(gym.Env):
     def __init__(self, ip, server_p, monitor_p, r_type, enable_draw) -> None:
-
+        self.mass_count = 0
         self.ball_v = None
         self.ball_pos = None
         self.fresh_episode = False
@@ -142,8 +145,8 @@ class GoalkeeperEnv(gym.Env):
            goalkeeper_status -> current keepers behaviour,step_count_in_action ,ready]
         """
         self.observation_space = spaces.Box(
-            low=np.array([-50, 0, 0, -30, -30, -30, -15, -10, 0,0]),  # Min values
-            high=np.array([50, 30, 30, 30, -30, 30, 10, 10, len(action_dict),1]),  # Max values
+            low=np.array([-50, 0, 0, -30, -30, -30, -15, -10, 0, 0]),  # Min values
+            high=np.array([50, 30, 30, 30, 30, 30, 10, 10, len(action_dict), 1]),  # Max values
             dtype=np.float32
         )
         self.obs = np.zeros(10, np.float32)
@@ -153,6 +156,29 @@ class GoalkeeperEnv(gym.Env):
         self.ready = 1
         assert np.any(self.player.world.robot.cheat_abs_pos), "Cheats are not enabled! Run_Utils.py -> Server -> Cheats"
         self.reset()
+
+        # Logging setup
+        self.log_dir = "./logs"
+        os.makedirs(self.log_dir, exist_ok=True)
+        log_file = os.path.join(self.log_dir, f"goalkeeper_test_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log")
+        logging.basicConfig(
+            filename=log_file,
+            level=logging.INFO,
+            format='%(asctime)s - %(message)s',
+            datefmt='%Y-%m-%d %H:%M:%S'
+        )
+
+        # CSV setup
+        self.csv_file = os.path.join(self.log_dir, "goalkeeper_results.csv")
+        with open(self.csv_file, mode='w', newline='') as file:
+            writer = csv.writer(file)
+            writer.writerow(["Shot", "Result", "Timestamp"])
+
+        # Performance tracking
+        self.shot_count = 0
+        self.goals = 0
+        self.saves = 0
+        self.misses = 0
 
     def reset(self):
         '''
@@ -454,7 +480,7 @@ class GoalkeeperEnv(gym.Env):
                             # Reward for correct dive direction
                             if behavior_name == dive_direction and not self.dive_reward:
                                 reward += 0.4  # Positive reward for correct dive
-                                self.dive_reward =True
+                                self.dive_reward = True
                             else:
                                 # Penalize wrong dive direction
                                 reward += -0.2  # Negative reward for wrong dive
@@ -467,7 +493,7 @@ class GoalkeeperEnv(gym.Env):
                 if closest_point is None:
                     closest_point = self.get_bal_pos()
                 closest_point = np.clip(closest_point[0], -15, -13.5), np.clip(closest_point[1], -0.9,
-                                                                                         0.9)
+                                                                               0.9)
                 x_coordinate = closest_point[0]  # self.get_keeper_pos()[0]
                 y_coordinate = closest_point[1]  # np.clip(self.predict_ball_y_at_x(-15), -1, 1)
                 self.player.behavior.execute("Walk", (x_coordinate, y_coordinate), True,
@@ -486,24 +512,46 @@ class GoalkeeperEnv(gym.Env):
 
         if self.fresh_episode and self.step_counter > 2:
             # print(f"Flags - Goal: {self.is_goal(b)}, Save: {self.is_save(bh)}, Miss: {self.is_miss(b)}")
+            timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             if self.is_goal(b):
                 self.goal_conceded = True
                 # print("Goal! Current Step: ", self.step_counter)
                 reward += -1  # Negative reward for conceding a goal
+                logging.info(f"Shot {self.shot_count + 1}: Goal")
+                self.goals += 1
+                self.log_csv(self.shot_count + 1, "Goal", timestamp)
+                self.shot_count += 1
                 self.fresh_episode = False
             elif self.is_save(bh) and not self.goal_conceded:
                 # print("Save! Current Step: ", self.step_counter)
                 reward += 1  # Positive reward for saving
+                logging.info(f"Shot {self.shot_count + 1}: Save")
+                self.saves += 1
+                self.log_csv(self.shot_count + 1, "Save", timestamp)
+                self.shot_count += 1
                 self.fresh_episode = False
             elif self.is_miss(b):
                 # print("Miss! Current Step: ", self.step_counter)
+                logging.info(f"Shot {self.shot_count + 1}: Miss")
+                self.misses += 1
+                self.log_csv(self.shot_count + 1, "Miss", timestamp)
+                self.shot_count += 1
                 self.fresh_episode = False
+
+            # Safety quicksave every 100 shots
+
 
         # Check if episode is done
         done = (
                 (self.step_counter > 0 and self.step_counter >= MAX_STEP) or
                 (self.step_counter > 15 and (self.is_goal(b) or self.is_save(bh) or self.is_miss(b)))
         )
+
+        if self.shot_count % 100 == 0 and done:
+            print(f"SAVED FOR {self.shot_count} EPISODES")
+            self.safety_quicksave()
+            if self.shot_count == 1000:
+                raise KeyboardInterrupt()
 
         # print(f"Step Counter: {self.step_counter}, Max Step: {MAX_STEP}")
         # print(f"Done Condition: {done}")
@@ -538,6 +586,41 @@ class GoalkeeperEnv(gym.Env):
         # print(f"Step {self.step_counter}: Done={done}, Reward={reward}")
 
         return self.state, reward, done, {}
+
+    def log_csv(self, shot, result, timestamp):
+        """Log results to a CSV file."""
+        with open(self.csv_file, mode='a', newline='') as file:
+            writer = csv.writer(file)
+            writer.writerow([shot, result, timestamp])
+
+    def safety_quicksave(self):
+        """Save the current state of performance metrics."""
+        quicksave_file = os.path.join(self.log_dir, "quicksave.csv")
+        with open(quicksave_file, mode='w', newline='') as file:
+            writer = csv.writer(file)
+            writer.writerow(["Metric", "Value"])
+            writer.writerow(["Total Shots", self.shot_count])
+            writer.writerow(["Goals", self.goals])
+            writer.writerow(["Saves", self.saves])
+            writer.writerow(["Misses", self.misses])
+
+    def summarize_performance(self):
+            """Log and print a summary of the goalkeeper's performance."""
+            save_ratio = self.saves / self.shot_count if self.shot_count > 0 else 0
+            fail_ratio = self.goals / self.shot_count if self.shot_count > 0 else 0
+
+            summary = (
+                f"\n=== Goalkeeper Performance Summary ===\n"
+                f"Total Shots: {self.shot_count}\n"
+                f"Goals: {self.goals}\n"
+                f"Saves: {self.saves}\n"
+                f"Misses: {self.misses}\n"
+                f"Save Ratio: {save_ratio:.2f}\n"
+                f"Fail Ratio: {fail_ratio:.2f}\n"
+            )
+
+            logging.info(summary)
+            print(summary)
 
 
 class Train(Train_Base):
@@ -604,6 +687,8 @@ class Train(Train_Base):
                               False)  # Export to pkl to create custom behavior
             self.test_model(model, env, log_path=args["folder_dir"], model_path=args["folder_dir"])
         except KeyboardInterrupt:
+            print("\nTesting interrupted by user. Summarizing performance...")
+            env.summarize_performance()
             print()
 
         env.close()
@@ -643,3 +728,7 @@ This example scales poorly with the number of CPUs because:
 - The simulation workload is light
 - For these reasons, the IPC overhead is significant
 '''
+
+# Train start:    28/01/2025 21:00:41
+# Train end:      29/01/2025 04:45:18
+# Train duration: 7:44:36
