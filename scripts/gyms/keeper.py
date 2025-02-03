@@ -10,6 +10,9 @@ import numpy as np
 import random
 import math
 from collections import deque
+import logging
+from datetime import datetime
+import csv
 
 '''
 Objective:
@@ -110,7 +113,7 @@ class GoalkeeperEnv(gym.Env):
 
         #  action space: 0 = do nothing, 1 = dive left, 2 = dive right
         #               3 = fall 4 = get up
-        self.action_space = spaces.Discrete(4)  # todo
+        self.action_space = spaces.Discrete(5) #todo
         self.goalkeeper_status = 0
         self.ready = 1
         self.goal_conceded = False
@@ -129,8 +132,8 @@ class GoalkeeperEnv(gym.Env):
            goalkeeper_status -> current keepers behaviour,step_count_in_action ,ready]
         """
         self.observation_space = spaces.Box(
-            low=np.array([-50, 0, 0, -30, -30, -30, -15, -10, 0, 0, 0]),  # Min values
-            high=np.array([50, 30, 30, 30, -30, 30, 10, 10, len(action_dict), 20, 1]),  # Max values
+            low=np.array([-50, 0, 0, -30, -30, -30, -15, -10, 0, 0]),  # Min values
+            high=np.array([50, 30, 30, 30, -30, 30, 10, 10, 6, 1]),  # Max values
             dtype=np.float32
         )
         self.obs = np.zeros(11, np.float32)
@@ -140,6 +143,29 @@ class GoalkeeperEnv(gym.Env):
         self.ready = 1
         assert np.any(self.player.world.robot.cheat_abs_pos), "Cheats are not enabled! Run_Utils.py -> Server -> Cheats"
         self.reset()
+        
+        # Logging setup
+        self.log_dir = "./logs"
+        os.makedirs(self.log_dir, exist_ok=True)
+        log_file = os.path.join(self.log_dir, f"goalkeeper_test_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log")
+        logging.basicConfig(
+            filename=log_file,
+            level=logging.INFO,
+            format='%(asctime)s - %(message)s',
+            datefmt='%Y-%m-%d %H:%M:%S'
+        )
+
+        # CSV setup
+        self.csv_file = os.path.join(self.log_dir, "goalkeeper_results.csv")
+        with open(self.csv_file, mode='w', newline='') as file:
+            writer = csv.writer(file)
+            writer.writerow(["Shot", "Result", "Timestamp"])
+
+        # Performance tracking
+        self.shot_count = 0
+        self.goals = 0
+        self.saves = 0
+        self.misses = 0
 
     def reset(self):
         '''
@@ -278,6 +304,8 @@ class GoalkeeperEnv(gym.Env):
             "dive_direction": dive_direction
         }
 
+
+
     def observe(self):
 
         r = self.player.world.robot
@@ -292,7 +320,7 @@ class GoalkeeperEnv(gym.Env):
         ball_trajectory_info = self.predict_ball(bh)
 
         self.obs = [ball_pos_x, ball_pos_y, ball_pos_z, ball_vel_x, ball_vel_y, ball_vel_z,
-                    keeper_pos_x, keeper_pos_y, self.goalkeeper_status, self.step_count_in_action, self.ready]
+                    keeper_pos_x, keeper_pos_y, self.goalkeeper_status, self.step_count_in_action]
 
         # Ensure no NaNs or infinities
         self.obs = np.nan_to_num(self.obs, nan=0.0, posinf=1e6, neginf=-1e6).astype(np.float32)
@@ -360,7 +388,7 @@ class GoalkeeperEnv(gym.Env):
         snake_behaviour = False
         self.fresh_episode = True
         reward = 0
-
+        
         # Use the predict_ball method to determine ball trajectory
         ball_trajectory_info = self.predict_ball(bh)
         if ball_trajectory_info:
@@ -369,7 +397,7 @@ class GoalkeeperEnv(gym.Env):
         else:
             closest_point = None
             dive_direction = None
-
+        
         # Ensure action is an integer, handling scalar or array input
         if isinstance(action, np.ndarray):
             action = int(action)
@@ -379,9 +407,9 @@ class GoalkeeperEnv(gym.Env):
         # Proximity threshold for deciding minimal action
         proximity_threshold = 2.0  # Example value, can be tuned
         keeper_pos = np.array(self.get_keeper_pos())
-        ball_distance = np.linalg.norm(np.array(closest_point) - keeper_pos) if closest_point is not None else float(
-            'inf')
-
+        ball_distance = np.linalg.norm(np.array(closest_point) - keeper_pos) if closest_point is not None else float('inf')
+        
+        
         if action != self.goalkeeper_status and not self.ready:
             snake_behaviour = True  # needs to be penelized as to  introduce keeper confidence
             self.step_count_in_action = 0
@@ -394,13 +422,13 @@ class GoalkeeperEnv(gym.Env):
                 print(f"Action {behavior_name} finished in {self.step_count_in_action} steps")
                 self.goalkeeper_status = 0
                 self.step_count_in_action = 0
-
+                
                 # Penalize unnecessary dives if ball is within proximity threshold
                 if ball_distance < proximity_threshold:
                     reward += -1.0  # Heavy penalty for diving unnecessarily
                     print("Unnecessary dive! Penalized.")
                 else:
-
+                    
                     # Reward for correct dive direction
                     if behavior_name == dive_direction:
                         reward += 0.2  # Positive reward for correct dive
@@ -409,12 +437,12 @@ class GoalkeeperEnv(gym.Env):
                         # Penalize wrong dive direction
                         reward += -0.2  # Negative reward for wrong dive
                         print("Wrong dive direction!")
-
+                    
             else:
                 self.goalkeeper_status = action
         elif action == 4:
             # Execute movement toward predicted ball trajectory
-            # print(f"predicted at " + str(y_coordinate))
+            #print(f"predicted at " + str(y_coordinate))
             if ball_distance < proximity_threshold:
                 reward += 0.5  # Reward walking to minimize action
                 print("Walking rewarded for minimal action!")
@@ -430,7 +458,7 @@ class GoalkeeperEnv(gym.Env):
         # shaped_reward = max(0, 1 - proximity / 8)  # Reward decreases as distance increases
         # reward += shaped_reward
         # print(f"Shaped reward based on proximity: {shaped_reward}")
-
+        
         self.sync()  # run simulation step
         self.step_counter += 1
         self.observe()
@@ -439,23 +467,46 @@ class GoalkeeperEnv(gym.Env):
             reward += -0.1
 
         if self.fresh_episode and self.step_counter > 15:
+            timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             # print(f"Flags - Goal: {self.is_goal(b)}, Save: {self.is_save(bh)}, Miss: {self.is_miss(b)}")
             if self.is_goal(b):
                 self.goal_conceded = True
                 # print("Goal! Current Step: ", self.step_counter)
                 reward += -1  # Negative reward for conceding a goal
+                logging.info(f"Shot {self.shot_count + 1}: Goal")
+                self.goals += 1
+                self.log_csv(self.shot_count + 1, "Goal", timestamp)
+                self.shot_count += 1
                 self.fresh_episode = False
             elif self.is_save(bh) and not self.goal_conceded:
                 # print("Save! Current Step: ", self.step_counter)
                 reward += 1  # Positive reward for saving
+                logging.info(f"Shot {self.shot_count + 1}: Save")
+                self.saves += 1
+                self.log_csv(self.shot_count + 1, "Save", timestamp)
+                self.shot_count += 1
                 self.fresh_episode = False
             elif self.is_miss(b) and self.ready == 1 and not self.goal_conceded:
                 # print("Miss! Current Step: ", self.step_counter)
                 reward += 0.5  # Positive reward for stating ready and missing
+                logging.info(f"Shot {self.shot_count + 1}: Miss")
+                self.misses += 1
+                self.log_csv(self.shot_count + 1, "Miss", timestamp)
+                self.shot_count += 1
                 self.fresh_episode = False
             elif self.is_miss(b):
                 # print("Miss! Current Step: ", self.step_counter)
+                logging.info(f"Shot {self.shot_count + 1}: Miss")
+                self.misses += 1
+                self.log_csv(self.shot_count + 1, "Miss", timestamp)
+                self.shot_count += 1
                 self.fresh_episode = False
+            
+            self.fresh_episode = False
+                        
+            # Safety quicksave every 100 shots
+            if self.shot_count % 100 == 0:
+                self.safety_quicksave()
 
         # Check if episode is done
         done = (
@@ -493,11 +544,45 @@ class GoalkeeperEnv(gym.Env):
 
         # Update state
         self.state = self.obs
-        # if done:
-        # print(f"Step {self.step_counter}: Done={done}, Reward={reward}")
+        #if done:
+           # print(f"Step {self.step_counter}: Done={done}, Reward={reward}")
 
         return self.state, reward, done, {}
 
+    def log_csv(self, shot, result, timestamp):
+        """Log results to a CSV file."""
+        with open(self.csv_file, mode='a', newline='') as file:
+            writer = csv.writer(file)
+            writer.writerow([shot, result, timestamp])
+
+    def safety_quicksave(self):
+        """Save the current state of performance metrics."""
+        quicksave_file = os.path.join(self.log_dir, "quicksave.csv")
+        with open(quicksave_file, mode='w', newline='') as file:
+            writer = csv.writer(file)
+            writer.writerow(["Metric", "Value"])
+            writer.writerow(["Total Shots", self.shot_count])
+            writer.writerow(["Goals", self.goals])
+            writer.writerow(["Saves", self.saves])
+            writer.writerow(["Misses", self.misses])
+
+    def summarize_performance(self):
+            """Log and print a summary of the goalkeeper's performance."""
+            save_ratio = self.saves / self.shot_count if self.shot_count > 0 else 0
+            fail_ratio = self.goals / self.shot_count if self.shot_count > 0 else 0
+
+            summary = (
+                f"\n=== Goalkeeper Performance Summary ===\n"
+                f"Total Shots: {self.shot_count}\n"
+                f"Goals: {self.goals}\n"
+                f"Saves: {self.saves}\n"
+                f"Misses: {self.misses}\n"
+                f"Save Ratio: {save_ratio:.2f}\n"
+                f"Fail Ratio: {fail_ratio:.2f}\n"
+            )
+
+            logging.info(summary)
+            print(summary)
 
 class Train(Train_Base):
     def __init__(self, script) -> None:
@@ -563,6 +648,8 @@ class Train(Train_Base):
                               False)  # Export to pkl to create custom behavior
             self.test_model(model, env, log_path=args["folder_dir"], model_path=args["folder_dir"])
         except KeyboardInterrupt:
+            print("\nTesting interrupted by user. Summarizing performance...")
+            env.summarize_performance()
             print()
 
         env.close()
